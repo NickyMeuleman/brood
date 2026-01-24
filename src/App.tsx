@@ -6,6 +6,7 @@ import "./App.css";
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
+  const [numbers, setNumbers]=useState<Array<number>>([]);
 
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -44,6 +45,25 @@ function App() {
         <button type="submit">Greet</button>
       </form>
       <p>{greetMsg}</p>
+      <form
+        className="row"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          let nums = await invoke("count",{to:Number(e.target.num.value)});
+          setNumbers(nums);
+          
+          
+        }}
+      >
+        <input
+          name="num"
+          id="num-input"
+          placeholder="Enter a number..."
+          type="number"
+        />
+        <button type="submit">count</button>
+      </form>
+      <ul>{numbers.map(n=><li key={n}>{n}</li>)}</ul>
     </main>
   );
 }
