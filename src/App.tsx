@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
 import "./App.css";
@@ -7,6 +7,17 @@ function App() {
 	const [greetMsg, setGreetMsg] = useState("");
 	const [name, setName] = useState("");
 	const [numbers, setNumbers] = useState<Array<number>>([]);
+	const [count, setCount] = useState(0);
+
+	useEffect(() => {
+		async function getCount() {
+			const count = await commands.getCount(1);
+			if (count.status === "ok") {
+				setCount(count.data.value);
+			}
+		}
+		getCount();
+	}, []);
 
 	async function greet() {
 		// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -47,9 +58,11 @@ function App() {
 			<p>{greetMsg}</p>
 			<form
 				className="row"
-				onSubmit={async (e) => {
+				onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
 					e.preventDefault();
-					const nums = await commands.count(Number(e.target.num.value));
+					const formData = new FormData(e.currentTarget);
+					const num = formData.get("num");
+					const nums = await commands.count(Number(num || 0));
 					setNumbers(nums);
 				}}
 			>
@@ -66,6 +79,18 @@ function App() {
 					<li key={n}>{n}</li>
 				))}
 			</ul>
+			<h2>Count: {count}</h2>
+			<button
+				type="button"
+				onClick={async () => {
+					const res = await commands.incrementCount(1);
+					if (res.status === "ok") {
+						setCount(res.data.value);
+					}
+				}}
+			>
+				Increment
+			</button>
 		</main>
 	);
 }

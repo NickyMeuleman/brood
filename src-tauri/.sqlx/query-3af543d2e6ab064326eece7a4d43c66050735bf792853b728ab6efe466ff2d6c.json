@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE counts SET value = value + 1 WHERE id = ?;",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3af543d2e6ab064326eece7a4d43c66050735bf792853b728ab6efe466ff2d6c"
+}
