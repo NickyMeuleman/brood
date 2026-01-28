@@ -65,7 +65,7 @@ pub fn run() {
     #[cfg(debug_assertions)]
     builder
         .export(
-            // treat i64s as js numbers because sqlite integers are i64s, WARNING: possible date loss
+            // treat i64s as js numbers because sqlite integers are i64s, WARNING: possible data loss
             Typescript::default()
                 .bigint(BigIntExportBehavior::Number)
                 // make typescript ignore the generated bindings file
