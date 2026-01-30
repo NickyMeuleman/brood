@@ -1,12 +1,13 @@
-import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
 import "./App.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useUIStore } from "./stores/ui";
 
 function App() {
-	const [name, setName] = useState("");
 	const queryClient = useQueryClient();
+	const name = useUIStore((state) => state.name);
+	const setName = useUIStore((state) => state.setName);
 
 	const countQuery = useQuery({
 		queryKey: ["count", 1],
@@ -58,6 +59,7 @@ function App() {
 			>
 				<input
 					id="greet-input"
+          value={name}
 					onChange={(e) => setName(e.currentTarget.value)}
 					placeholder="Enter a name..."
 				/>
@@ -65,6 +67,7 @@ function App() {
 					{greetMutation.isPending ? "Greeting..." : "Greet"}
 				</button>
 			</form>
+      <p>Name global UI state: {name}</p>
 			<p>{greetMutation.data}</p>
 			<form
 				className="row"
