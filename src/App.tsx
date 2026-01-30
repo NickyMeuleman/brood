@@ -1,28 +1,36 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
 import "./App.css";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 function App() {
-	const [greetMsg, setGreetMsg] = useState("");
 	const [name, setName] = useState("");
-	const [numbers, setNumbers] = useState<Array<number>>([]);
-	const [count, setCount] = useState(0);
+	const queryClient = useQueryClient();
 
-	useEffect(() => {
-		async function getCount() {
-			const count = await commands.getCount(1);
-			if (count.status === "ok") {
-				setCount(count.data.value);
-			}
-		}
-		getCount();
-	}, []);
+	const countQuery = useQuery({
+		queryKey: ["count", 1],
+		queryFn: async () => {
+			const res = await commands.getCount(1);
+			if (res.status === "error") throw new Error("Failed to fetch count");
+			return res.data.value;
+		},
+	});
 
-	async function greet() {
-		// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-		setGreetMsg(await commands.greet(name));
-	}
+	const greetMutation = useMutation({
+		mutationFn: (name: string) => commands.greet(name),
+	});
+
+	const numbersMutation = useMutation({
+		mutationFn: (num: number) => commands.count(num),
+	});
+
+	const incrementMutation = useMutation({
+		mutationFn: (val: number) => commands.incrementCount(val),
+		onSuccess: (data, id) => {
+			queryClient.invalidateQueries({ queryKey: ["count", id] });
+		},
+	});
 
 	return (
 		<main className="container">
@@ -45,7 +53,7 @@ function App() {
 				className="row"
 				onSubmit={(e) => {
 					e.preventDefault();
-					greet();
+					greetMutation.mutate(name);
 				}}
 			>
 				<input
@@ -53,17 +61,18 @@ function App() {
 					onChange={(e) => setName(e.currentTarget.value)}
 					placeholder="Enter a name..."
 				/>
-				<button type="submit">Greet</button>
+				<button type="submit" disabled={greetMutation.isPending}>
+					{greetMutation.isPending ? "Greeting..." : "Greet"}
+				</button>
 			</form>
-			<p>{greetMsg}</p>
+			<p>{greetMutation.data}</p>
 			<form
 				className="row"
 				onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
 					e.preventDefault();
 					const formData = new FormData(e.currentTarget);
-					const num = formData.get("num");
-					const nums = await commands.count(Number(num || 0));
-					setNumbers(nums);
+					const num = Number(formData.get("num") || 0);
+					numbersMutation.mutate(num);
 				}}
 			>
 				<input
@@ -75,20 +84,12 @@ function App() {
 				<button type="submit">count</button>
 			</form>
 			<ul>
-				{numbers.map((n) => (
+				{(numbersMutation.data || []).map((n) => (
 					<li key={n}>{n}</li>
 				))}
 			</ul>
-			<h2>Count: {count}</h2>
-			<button
-				type="button"
-				onClick={async () => {
-					const res = await commands.incrementCount(1);
-					if (res.status === "ok") {
-						setCount(res.data.value);
-					}
-				}}
-			>
+			<h2>Count: {countQuery.isLoading ? "loading" : countQuery.data}</h2>
+			<button type="button" onClick={() => incrementMutation.mutate(1)}>
 				Increment
 			</button>
 		</main>

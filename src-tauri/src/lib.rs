@@ -28,21 +28,12 @@ async fn get_count(state: State<'_, Db>, id: i64) -> Result<Count, String> {
 
 #[tauri::command]
 #[specta::specta]
-async fn increment_count(state: State<'_, Db>, id: i64) -> Result<Count, String> {
-    let mut tx = state.pool.begin().await.map_err(|e| e.to_string())?;
-
+async fn increment_count(state: State<'_, Db>, id: i64) -> Result<(), String> {
     sqlx::query!("UPDATE counts SET value = value + 1 WHERE id = ?;", id)
-        .execute(&mut *tx)
+        .execute(&state.pool)
         .await
         .map_err(|e| e.to_string())?;
-    let updated = sqlx::query_as!(Count, "SELECT id, value FROM counts WHERE id = ?", id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    tx.commit().await.map_err(|e| e.to_string())?;
-
-    Ok(updated)
+    Ok(())
 }
 
 #[tauri::command]
