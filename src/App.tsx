@@ -1,8 +1,8 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
-import "./App.css";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUIStore } from "./stores/ui";
+import "./App.css";
 
 function App() {
 	const queryClient = useQueryClient();
@@ -48,7 +48,7 @@ function App() {
 					<img src={reactLogo} className="logo react" alt="React logo" />
 				</a>
 			</div>
-			<p>Click on the Tauri, Vite, and React logos to learn more.</p>
+			<p className="text-red-600">Click on the Tauri, Vite, and React logos to learn more.</p>
 
 			<form
 				className="row"
@@ -59,7 +59,7 @@ function App() {
 			>
 				<input
 					id="greet-input"
-          value={name}
+					value={name}
 					onChange={(e) => setName(e.currentTarget.value)}
 					placeholder="Enter a name..."
 				/>
@@ -67,7 +67,7 @@ function App() {
 					{greetMutation.isPending ? "Greeting..." : "Greet"}
 				</button>
 			</form>
-      <p>Name global UI state: {name}</p>
+			<p>Name global UI state: {name}</p>
 			<p>{greetMutation.data}</p>
 			<form
 				className="row"
