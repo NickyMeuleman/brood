@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
 import { useUIStore } from "./stores/ui";
+import { getErrorMessage } from "./lib/errors";
 import "./App.css";
 
 function App() {
@@ -9,13 +10,15 @@ function App() {
 	const name = useUIStore((state) => state.name);
 	const setName = useUIStore((state) => state.setName);
 
+	const countId = 2;
 	const countQuery = useQuery({
-		queryKey: ["count", 1],
+		queryKey: ["count", countId],
 		queryFn: async () => {
-			const res = await commands.getCount(1);
-			if (res.status === "error") throw new Error("Failed to fetch count");
+			const res = await commands.getCount(countId);
+			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return res.data.value;
 		},
+		retry: false,
 	});
 
 	const greetMutation = useMutation({
@@ -27,7 +30,11 @@ function App() {
 	});
 
 	const incrementMutation = useMutation({
-		mutationFn: (val: number) => commands.incrementCount(val),
+		mutationFn: async (val: number) => {
+			const res = await commands.incrementCount(val);
+			if (res.status === "error") throw new Error(getErrorMessage(res.error));
+			return res.data;
+		},
 		onSuccess: (data, id) => {
 			queryClient.invalidateQueries({ queryKey: ["count", id] });
 		},
@@ -91,9 +98,18 @@ function App() {
 					<li key={n}>{n}</li>
 				))}
 			</ul>
-			<h2>Count: {countQuery.isLoading ? "loading" : countQuery.data}</h2>
-			<button type="button" onClick={() => incrementMutation.mutate(1)}>
-				Increment
+			<div>
+				{countQuery.isLoading && <p>Loading count...</p>}
+				{countQuery.isError && (
+					<div className="text-red-600">
+						<p>Failed to load count</p>
+						<p className="text-sm">{countQuery.error.message}</p>
+					</div>
+				)}
+				{countQuery.isSuccess && <h2>Count: {countQuery.data}</h2>}
+			</div>
+			<button type="button" onClick={() => incrementMutation.mutate(countId)}>
+				Increment <span className="text-red-600 text-sm">{incrementMutation.error?.message}</span>
 			</button>
 		</main>
 	);

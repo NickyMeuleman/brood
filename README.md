@@ -1,8 +1,9 @@
-# Tauri + React + Typescript
+To investigate:
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+How to send Rust thiserror annotations to javascript?
+Now I duplicate these strings, once in #[error("")] on the backend and once in lib/errors.ts on the frontend
 
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-# brood
+Validation without duplication:
+Backend validation with the rust validator crate.
+Frontend validation with the zod package.
+Do I have to duplicate the logic or can I write it once and reuse and extend it?

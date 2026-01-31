@@ -10,6 +10,29 @@ use serde::{Deserialize, Serialize};
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri::{async_runtime::block_on, Manager, State};
 use tauri_specta::{collect_commands, Builder};
+use thiserror::Error;
+
+#[derive(Debug, Error, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "type", content = "data")]
+pub enum AppError {
+    #[error("Data not found")]
+    NotFound,
+
+    #[error("Database error: {0}")]
+    Database(String),
+
+    #[error("Internal server error")]
+    Internal,
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            sqlx::Error::RowNotFound => AppError::NotFound,
+            _ => AppError::Database(err.to_string()),
+        }
+    }
+}
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, specta::Type)]
 pub struct Count {
@@ -19,20 +42,25 @@ pub struct Count {
 
 #[tauri::command]
 #[specta::specta]
-async fn get_count(state: State<'_, Db>, id: i64) -> Result<Count, String> {
+async fn get_count(state: State<'_, Db>, id: i64) -> Result<Count, AppError> {
     sqlx::query_as!(Count, "SELECT id, value FROM counts WHERE id = ?", id)
         .fetch_one(&state.pool)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 #[specta::specta]
-async fn increment_count(state: State<'_, Db>, id: i64) -> Result<(), String> {
-    sqlx::query!("UPDATE counts SET value = value + 1 WHERE id = ?;", id)
+async fn increment_count(state: State<'_, Db>, id: i64) -> Result<(), AppError> {
+    let result = sqlx::query!("UPDATE counts SET value = value + 1 WHERE id = ?;", id)
         .execute(&state.pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
     Ok(())
 }
 
