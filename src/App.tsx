@@ -1,25 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import reactLogo from "./assets/react.svg";
 import { commands } from "./bindings";
 import { useUIStore } from "./stores/ui";
-import { getErrorMessage } from "./lib/errors";
 import "./App.css";
+import { useCount } from "./hooks/useCount";
 
 function App() {
-	const queryClient = useQueryClient();
+	const { countQuery, incrementMutation } = useCount(1);
 	const name = useUIStore((state) => state.name);
 	const setName = useUIStore((state) => state.setName);
-
-	const countId = 2;
-	const countQuery = useQuery({
-		queryKey: ["count", countId],
-		queryFn: async () => {
-			const res = await commands.getCount(countId);
-			if (res.status === "error") throw new Error(getErrorMessage(res.error));
-			return res.data.value;
-		},
-		retry: false,
-	});
 
 	const greetMutation = useMutation({
 		mutationFn: (name: string) => commands.greet(name),
@@ -27,17 +16,6 @@ function App() {
 
 	const numbersMutation = useMutation({
 		mutationFn: (num: number) => commands.count(num),
-	});
-
-	const incrementMutation = useMutation({
-		mutationFn: async (val: number) => {
-			const res = await commands.incrementCount(val);
-			if (res.status === "error") throw new Error(getErrorMessage(res.error));
-			return res.data;
-		},
-		onSuccess: (data, id) => {
-			queryClient.invalidateQueries({ queryKey: ["count", id] });
-		},
 	});
 
 	return (
@@ -55,7 +33,9 @@ function App() {
 					<img src={reactLogo} className="logo react" alt="React logo" />
 				</a>
 			</div>
-			<p className="text-red-600">Click on the Tauri, Vite, and React logos to learn more.</p>
+			<p className="text-red-600">
+				Click on the Tauri, Vite, and React logos to learn more.
+			</p>
 
 			<form
 				className="row"
@@ -108,8 +88,11 @@ function App() {
 				)}
 				{countQuery.isSuccess && <h2>Count: {countQuery.data}</h2>}
 			</div>
-			<button type="button" onClick={() => incrementMutation.mutate(countId)}>
-				Increment <span className="text-red-600 text-sm">{incrementMutation.error?.message}</span>
+			<button type="button" onClick={() => incrementMutation.mutate()}>
+				Increment{" "}
+				<span className="text-red-600 text-sm">
+					{incrementMutation.error?.message}
+				</span>
 			</button>
 		</main>
 	);
