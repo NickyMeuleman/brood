@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commands } from "../bindings";
 import { getErrorMessage } from "../lib/errors";
+import queryKeys from "../lib/queryKeys";
 
 export const useCount = (countId: number) => {
 	const queryClient = useQueryClient();
 
 	const countQuery = useQuery({
-		queryKey: ["count", countId],
+		queryKey: queryKeys.count.id(countId),
 		queryFn: async () => {
 			const res = await commands.getCount(countId);
 			if (res.status === "error") throw new Error(getErrorMessage(res.error));
@@ -22,8 +23,8 @@ export const useCount = (countId: number) => {
 			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return res.data;
 		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["count", countId] });
+		onSettled: () => {
+			queryClient.invalidateQueries({ queryKey: queryKeys.count.id(countId) });
 		},
 	});
 
