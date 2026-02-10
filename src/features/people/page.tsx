@@ -10,7 +10,7 @@ const PeoplePage = () => {
 	});
 
 	return (
-		<div className="pt-8 p-4 w-2/3 max-w-xl m-auto">
+		<div className="m-auto w-2/3 max-w-xl p-4 pt-8">
 			<form
 				onSubmit={(e) => {
 					e.preventDefault();
