@@ -1,3 +1,4 @@
+import { FieldGroup } from "@/components/ui/field";
 import { peopleFormOpts } from "@/features/people/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 
@@ -17,7 +18,7 @@ const PeoplePage = () => {
 					f.handleSubmit();
 				}}
 			>
-				<div className="fieldgroup">
+				<FieldGroup>
 					<f.AppField name="username">
 						{(field) => <field.TextField label="Full Name" />}
 					</f.AppField>
@@ -27,7 +28,7 @@ const PeoplePage = () => {
 					<f.AppForm>
 						<f.SubmitButton label="Submit" />
 					</f.AppForm>
-				</div>
+				</FieldGroup>
 			</form>
 		</div>
 	);

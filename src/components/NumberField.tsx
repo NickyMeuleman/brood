@@ -1,3 +1,5 @@
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { useFieldContext } from "@/hooks/form-context";
 
 export const NumberField = ({ label }: { label: string }) => {
@@ -5,9 +7,9 @@ export const NumberField = ({ label }: { label: string }) => {
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 
 	return (
-		<div data-invalid={isInvalid}>
-			<label htmlFor={field.name}>{label}</label>
-			<input
+		<Field data-invalid={isInvalid}>
+			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
+			<Input
 				type="number"
 				id={field.name}
 				name={field.name}
@@ -17,11 +19,7 @@ export const NumberField = ({ label }: { label: string }) => {
 				aria-invalid={isInvalid}
 				autoComplete="off"
 			/>
-			{isInvalid && (
-				<p className="text-red-600">
-					{field.state.meta.errors.map((e) => e.message).join(", ")}
-				</p>
-			)}
-		</div>
+			{isInvalid && <FieldError errors={field.state.meta.errors} />}
+		</Field>
 	);
 };

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useFormContext } from "@/hooks/form-context";
 
 export const SubmitButton = ({ label }: { label: string }) => {
@@ -12,9 +13,9 @@ export const SubmitButton = ({ label }: { label: string }) => {
 			})}
 			children={({ canSubmit, isSubmitting, isInvalid }) => {
 				return (
-					<button type="submit" disabled={!canSubmit} aria-invalid={isInvalid}>
+					<Button type="submit" disabled={!canSubmit} aria-invalid={isInvalid}>
 						{isSubmitting ? "..." : label}
-					</button>
+					</Button>
 				);
 			}}
 		/>
