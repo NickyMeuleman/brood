@@ -7,9 +7,8 @@ const RootLayout = () => (
 			<Link to="/" activeProps={{ className: "text-bold text-xl" }}>
 				Home
 			</Link>
-			<Link to="/about" className="text-lg">
-				About
-			</Link>
+			<Link to="/about">About</Link>
+			<Link to="/people">People</Link>
 		</div>
 		<hr />
 		<Outlet />

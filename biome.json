@@ -16,9 +16,10 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-      "correctness": {
-        "useExhaustiveDependencies": "on"
-      }
+			"correctness": {
+				"useExhaustiveDependencies": "on",
+				"noChildrenProp": "off"
+			}
 		}
 	},
 	"javascript": {
