@@ -1,9 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
-import reactLogo from "./assets/react.svg";
-import { commands } from "./bindings";
-import { useUIStore } from "./stores/ui";
-import "./App.css";
-import { useCount } from "./hooks/useCount";
+import reactLogo from "../assets/react.svg";
+import { commands } from "../bindings.ts";
+import { useCount } from "../hooks/useCount";
+import { useUIStore } from "../stores/ui";
+import styles from "./App.module.css";
 
 function App() {
 	const { countQuery, incrementMutation } = useCount(1);
@@ -19,26 +19,37 @@ function App() {
 	});
 
 	return (
-		<main className="container">
+		<main className={styles.container}>
 			<h1>Welcome to Tauri + React</h1>
 
-			<div className="row">
+			<div className={styles.row}>
 				<a href="https://vite.dev" target="_blank" rel="noopener">
-					<img src="/vite.svg" className="logo vite" alt="Vite logo" />
+					<img
+						src="/vite.svg"
+						className={`${styles.logo} ${styles.vite}`}
+						alt="Vite logo"
+					/>
 				</a>
 				<a href="https://tauri.app" target="_blank" rel="noopener">
-					<img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
+					<img
+						src="/tauri.svg"
+						className={`${styles.logo} ${styles.tauri}`}
+						alt="Tauri logo"
+					/>
 				</a>
 				<a href="https://react.dev" target="_blank" rel="noopener">
-					<img src={reactLogo} className="logo react" alt="React logo" />
+					<img
+						src={reactLogo}
+						className={`${styles.logo} ${styles.react}`}
+						alt="React logo"
+					/>
 				</a>
 			</div>
 			<p className="text-red-600">
 				Click on the Tauri, Vite, and React logos to learn more.
 			</p>
-
 			<form
-				className="row"
+				className={styles.row}
 				onSubmit={(e) => {
 					e.preventDefault();
 					greetMutation.mutate(name);
@@ -57,7 +68,7 @@ function App() {
 			<p>Name global UI state: {name}</p>
 			<p>{greetMutation.data}</p>
 			<form
-				className="row"
+				className={styles.row}
 				onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
 					e.preventDefault();
 					const formData = new FormData(e.currentTarget);
@@ -90,7 +101,7 @@ function App() {
 			</div>
 			<button type="button" onClick={() => incrementMutation.mutate()}>
 				Increment{" "}
-				<span className="text-red-600 text-sm">
+				<span className={`text-red-600 text-sm`}>
 					{incrementMutation.error?.message}
 				</span>
 			</button>
