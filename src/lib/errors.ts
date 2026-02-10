@@ -1,4 +1,4 @@
-import { AppError } from "../bindings";
+import type { AppError } from "../bindings";
 
 export function getErrorMessage(error: AppError): string {
   switch (error.type) {
