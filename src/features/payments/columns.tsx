@@ -75,7 +75,7 @@ const columnsArr = [
 						<span className="sr-only">Open menu</span>
 						<MoreHorizontal className="h-4 w-4" />
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="border">
+					<DropdownMenuContent align="end">
 						<DropdownMenuGroup>
 							<DropdownMenuLabel>Actions</DropdownMenuLabel>
 							<DropdownMenuItem
