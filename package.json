@@ -20,6 +20,8 @@
     "@tanstack/react-query-devtools": "^5.91.3",
     "@tanstack/react-router": "^1.159.5",
     "@tanstack/react-router-devtools": "^1.159.5",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table-devtools": "^8.21.3",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "class-variance-authority": "^0.7.1",

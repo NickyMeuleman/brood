@@ -4,14 +4,17 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
+// import { ReactTableDevtoolsPanel } from "@tanstack/react-table-devtools";
+
 const RootLayout = () => (
 	<>
-		<div className="p-2 flex gap-2">
+		<div className="flex gap-2 p-2">
 			<Link to="/" className="data-[status=active]:bg-red-700">
 				Home
 			</Link>
 			<Link to="/about">About</Link>
 			<Link to="/people">People</Link>
+			<Link to="/payments">Payments</Link>
 		</div>
 		<hr />
 		<Outlet />
@@ -32,6 +35,12 @@ const RootLayout = () => (
 					render: <FormDevtoolsPanel />,
 					defaultOpen: false,
 				},
+				// {
+				// 	name: "TanStack Table",
+				// 	// has to have access to the table variable, use locally or store the entire table in a context?
+				// 	render: <ReactTableDevtoolsPanel />,
+				// 	defaultOpen: false,
+				// },
 			]}
 		/>
 	</>
