@@ -7,3 +7,7 @@ Validation without duplication:
 Backend validation with the rust validator crate.
 Frontend validation with the zod package.
 Do I have to duplicate the logic or can I write it once and reuse and extend it?
+
+## Database
+
+Schema planning done via dbml format to visualize in https://dbdiagram.io/

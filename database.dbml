@@ -1,0 +1,781 @@
+// ============================================================
+// DESIGN GOALS
+// ============================================================
+// - Database stores facts. Derived values are calculated on the backend.
+// - All monetary values are decimal strings handled by rust_decimal.
+// - All timestamps are ISO 8601 UTC strings handled by chrono.
+// - Both rust_decimal and chrono are supported by sqlx with automatic typing.
+// - Trades are immutable facts. Corrections are made by adding a reversing trade followed by a corrected trade. Never mutate existing rows.
+
+// ============================================================
+// SQLITE REQUIREMENTS — enforced at connection time, not in schema
+// ============================================================
+// PRAGMA foreign_keys = ON must be set on every connection.
+// In sqlx: SqliteConnectOptions::new().foreign_keys(true)
+// Without this, SQLite silently ignores all foreign key constraints.
+//
+// Use STRICT tables in the migration for every table.
+// This prevents silent type coercion (e.g. text stored in integer column).
+// Syntax: CREATE TABLE foo (...) STRICT;
+//
+// ============================================================
+// CIRCULAR FK: cash_transaction ↔ fx_conversion
+// ============================================================
+// cash_transaction.fee_fx_conversion_id → fx_conversion.id
+// fx_conversion.debit_cash_transaction_id  → cash_transaction.id
+// fx_conversion.credit_cash_transaction_id → cash_transaction.id
+//
+// These form a cycle. SQLite cannot resolve this with normal FK constraints
+// because neither row can be inserted first without the other existing.
+//
+// Resolution: declare the FK from fx_conversion → cash_transaction as
+// DEFERRABLE INITIALLY DEFERRED in the migration. This tells SQLite to
+// check the constraint at transaction commit time, not at insert time.
+//
+// Migration must declare these two FKs as deferred:
+//   CREATE TABLE fx_conversion (
+//     ...
+//     debit_cash_transaction_id  INTEGER NOT NULL
+//       REFERENCES cash_transaction(id) DEFERRABLE INITIALLY DEFERRED,
+//     credit_cash_transaction_id INTEGER NOT NULL
+//       REFERENCES cash_transaction(id) DEFERRABLE INITIALLY DEFERRED,
+//     ...
+//   ) STRICT;
+//
+// Required insert order within a single transaction:
+//   1. INSERT INTO cash_transaction (debit leg, category = 'FX')
+//   2. INSERT INTO cash_transaction (credit leg, category = 'FX')
+//   3. INSERT INTO fx_conversion (referencing both rows above)
+//   4. If an explicit FX fee exists:
+//      INSERT INTO cash_transaction (fee leg, category = 'FEE',
+//        fee_fx_conversion_id = fx_conversion.id from step 3)
+//
+// All four inserts must be wrapped in a single BEGIN/COMMIT transaction.
+// The deferred FK on fx_conversion is only checked at COMMIT.
+// If any insert fails, ROLLBACK leaves the DB in a consistent state.
+//
+// In sqlx this looks like:
+//   let mut tx = pool.begin().await?;
+//   sqlx::query!("INSERT INTO cash_transaction ...").execute(&mut *tx).await?;
+//   sqlx::query!("INSERT INTO cash_transaction ...").execute(&mut *tx).await?;
+//   sqlx::query!("INSERT INTO fx_conversion ...").execute(&mut *tx).await?;
+//   // optional fee row
+//   tx.commit().await?;
+
+
+Table fund_family {
+  id    integer [pk, increment]
+  name  text    [not null, unique, note: 'e.g. "Vanguard FTSE All-World".']
+
+  note: '''
+Used to detect family-level Belgian FSMA registration.
+This can affect taxes.
+e.g. VWCE (acc) gets 1.32% TOB because VWRL (dist) is on the FSMA list under the same family.
+'''
+}
+
+Table instrument {
+  id                    integer [pk, increment]
+  isin                  text    [not null, unique]
+  name                  text    [not null]
+  issuer                text    [note: 'Optional. e.g. Vanguard, iShares, SPDR']
+  instrument_type       text    [not null, note: 'enum: ETF, FUND, STOCK, BOND, OTHER']
+  replication           text    [note: 'enum: PHYSICAL, SYNTHETIC']
+
+  // Tax classification fields (facts, rules applied on backend)
+  fsma_registered       boolean [not null, default: false, note: 'Is this ISIN registered in Belgium with the FSMA?']
+  fund_family_id        integer [ref: > fund_family.id, note: 'NULL if not part of a family; Used to detect family-level Belgian registration']
+  accumulating          boolean [not null, default: true, note: 'TRUE = accumulating, FALSE = distributing']
+  domicile              text    [note: 'ISO 3166-1 alpha-2; Does not always match first 2 letters of ISIN; Used to derive EEA membership in backend']
+  subject_to_cgt boolean [not null, default: true, note: 'FALSE for instruments exempt from meerwaardebelasting, e.g. pensioenspaarfondsen.']
+
+  note: '''
+Meerwaardebelasting operates at the ISIN level, not the listing level.
+'''
+}
+
+Table currency {
+  code text [pk, note: 'ISO 4217 currency code, e.g. EUR, USD, GBP']
+}
+
+Table listing {
+  id             integer [pk, increment]
+  instrument_id  integer [not null, ref: > instrument.id]
+  exchange_mic  text    [not null, note: 'ISO 10383 MIC, e.g. XAMS, XETR, XLON']
+  ticker         text    [not null]
+  currency_code  text    [not null, ref: > currency.code]
+  settlement_currency_code text [ref: > currency.code, note: 'NULL when settlement currency equals trading currency_code. Populated for listings where these differ, e.g. some LSE instruments.']
+  delisted_at    text    [note: 'ISO 8601 UTC timestamp. NULL = currently active. Set when a ticker change or delisting occurs.']
+
+
+  indexes {
+    (instrument_id, exchange_mic, ticker) [unique, note: 'where: delisted_at IS NULL']
+  }
+
+  note: '''
+One instrument can have many listings. e.g. IE00BFY0GT14 trades as SWRD on XAMS, SPPW on XETR, SWRD(EUR) and SWLD(GBP) on XLON.
+
+Ticker changes are modelled by setting delisted_at on the old listing row and inserting a new listing row. The corporate_action table records the SYMBOL_CHANGE event linking the two.
+'''
+}
+
+Table fx_rate {
+  id          integer [pk, increment]
+  date        text [not null, note: 'ISO 8601 YYYY-MM-DD']
+  currency    text [not null, ref: > currency.code]
+  rate_to_eur text [not null, note: 'Decimal string; 1 unit of currency in EUR']
+  source      text [not null, note: 'ECB, NBB, BROKER, MANUAL']
+
+  indexes {
+    (date, currency, source) [unique]
+  }
+}
+
+Table price_history {
+  id         integer [pk, increment]
+  listing_id integer [not null, ref: > listing.id]
+  date       text    [not null, note: 'ISO 8601 YYYY-MM-DD']
+  close      text    [not null, note: 'Decimal string in listing currency']
+  source     text    [not null, note: 'enum: EXCHANGE, BROKER, MANUAL']
+
+  indexes {
+    (listing_id, date, source) [unique]
+  }
+
+
+note: '''
+Prices are stored per listing because the same instrument trades at slightly 
+different prices on different exchanges.
+
+Multiple rows per (listing_id, date) are allowed when source differs,
+e.g. storing both an EXCHANGE price and a MANUAL correction for the same date.
+Backend selects the preferred source at query time (EXCHANGE > BROKER > MANUAL).
+
+The 2025-12-31 close is critical for meerwaardebelasting.
+
+To look up the snapshot price for a lot:
+  Trade-originated lots:
+    listing_id = lot.source_trade_id → trade.listing_id
+
+  CA-originated lots:
+    Traverse lot.parent_lot_id upward until a trade-originated lot is reached. If (source_trade_id IS NOT NULL), then use that lot's trade.listing_id. This recovers the original exchange the position was established on. Backend converts the close price to EUR via fx_rate on that date.
+'''
+}
+
+Table broker {
+  id        integer [pk, increment]
+  name      text    [not null, unique, note: 'e.g. "Re=bel", "MeDirect"']
+}
+
+Table cash {
+  id            integer [pk, increment]
+  broker_id     integer [not null, ref: > broker.id]
+  currency_code text    [not null, ref: > currency.code]
+
+  indexes {
+    (broker_id, currency_code) [unique]
+  }
+
+  note: '''
+FX conversions between two currency accounts at the same broker are modelled as two cash_transaction rows pointing to one fx_conversion.
+'''
+}
+
+Table cash_transaction {
+  id                integer [pk, increment]
+  cash_id           integer [not null, ref: > cash.id]
+  direction         text    [not null, note: 'enum: CREDIT, DEBIT']
+  amount            text    [not null, note: 'Decimal string']
+  transacted_at     text    [not null, note: 'ISO 8601 UTC timestamp. All timestamps stored in UTC; timezone conversion to Europe/Brussels applied on backend where legally required (e.g. CGT tax year cutoffs).']
+  category          text    [not null, note: 'enum: TRADE, FEE, TAX, DIVIDEND, TRANSFER, FX, OTHER']
+  trade_id          integer [ref: > trade.id, note: 'NULL for non-trade movements. When set, category must be TRADE. Links a settlement cash movement to its originating trade.']
+  dividend_id       integer [ref: > dividend.id, note: 'NULL for non-dividend movements. When set, category must be DIVIDEND. Links the cash movement to its originating dividend.']
+  source_ca_id      integer [ref: > corporate_action.id, note: 'NULL for non-CA cash movements. Set for cash-in-lieu payments arising from fractional remainders in split transformations. When set, category must be OTHER.']
+ description        text    [note: 'Human-readable, e.g. "Bought 10 SWRD @ 41.42 on XAMS", "Transfer from KBC", "Cash in lieu for fractional remainder from ticker ABC 3/2 split"']
+ fee_fx_conversion_id integer [ref: > fx_conversion.id, note: 'NULL for non-FX-fee movements. When set, category must be FEE. Links an explicit broker FX fee to its conversion.']
+
+  indexes {
+    (cash_id, transacted_at) [note: 'Running balance computation per account']
+  }
+
+  note: '''
+FX conversions are linked via fx_conversion table, which structurally enforces the debit/credit pair.
+Running balance is computed on backend as a cumulative sum over transacted_at per cash_id.
+
+Exactly one of the link columns may be set at a time.
+Backend enforces at insert time:
+  - trade_id       is only set when category = TRADE
+  - dividend_id    is only set when category = DIVIDEND
+  - source_ca_id   is only set when category = OTHER
+  - fee_fx_conversion_id is only set when category = FEE
+
+trade_id: set if and only if TRADE
+dividend_id: set if and only if DIVIDEND
+source_ca_id: set if and only if OTHER (cash-in-lieu) — but OTHER rows without source_ca_id are allowed (generic other cash movement)
+fee_fx_conversion_id: if set, must be FEE — but FEE rows without fee_fx_conversion_id are allowed (plain broker fee)
+mutual exclusion: no row can have more than one link column set
+
+Migration must include these CHECK constraints:
+CHECK ((trade_id IS NOT NULL) = (category = 'TRADE')),
+CHECK ((dividend_id IS NOT NULL) = (category = 'DIVIDEND')),
+CHECK (source_ca_id IS NULL OR category = 'OTHER'),
+CHECK (fee_fx_conversion_id IS NULL OR category = 'FEE'),
+CHECK (
+  (CASE WHEN trade_id             IS NOT NULL THEN 1 ELSE 0 END +
+   CASE WHEN dividend_id          IS NOT NULL THEN 1 ELSE 0 END +
+   CASE WHEN source_ca_id         IS NOT NULL THEN 1 ELSE 0 END +
+   CASE WHEN fee_fx_conversion_id IS NOT NULL THEN 1 ELSE 0 END) <= 1
+)
+'''
+}
+
+Table fx_conversion {
+  id                          integer [pk, increment]
+  debit_cash_transaction_id   integer [not null, unique, ref: > cash_transaction.id, note: 'The leg where currency is paid away. unique enforces one debit leg per conversion.']
+  credit_cash_transaction_id  integer [not null, unique, ref: > cash_transaction.id, note: 'The leg where currency is received. unique enforces one credit leg per conversion.']
+  rate                       text    [not null, note: 'Decimal string; units of debit currency per 1 unit of credit currency at the moment of conversion. Broker-specific; may differ from fx_rate on the same date.']
+  executed_at                 text    [not null, note: 'ISO 8601 UTC timestamp.']
+
+  note: '''
+Unique constraints structurally enforce exactly one debit and one credit leg.
+Both referenced cash_transaction rows must have category = FX; backend validates at insert time.
+Explicit broker FX fees appear as a separate cash_transaction row with category = FEE and fee_fx_conversion_id referencing this row.
+'''
+}
+
+Table broker_order {
+  id                 integer [pk, increment]
+  listing_id         integer [not null, ref: > listing.id]
+  broker_id          integer [not null, ref: > broker.id]
+  order_type         text    [not null, note: 'enum: MARKET, LIMIT']
+  side               text    [not null, note: 'enum: BUY, SELL']
+  requested_quantity text    [not null, note: 'Decimal string; Fractional quantities are allowed; Backend validates against broker capabilities.']
+  limit_price        text    [note: 'Decimal string in listing currency. NULL for MARKET orders']
+  placed_at          text    [not null, note: 'ISO 8601 UTC timestamp']
+  cancelled_at       text    [note: 'ISO 8601 UTC timestamp. NULL = not cancelled. Order status derived on backend: no fills → OPEN, partial fill → PARTIAL, complete fill → FILLED, cancelled_at IS NOT NULL → CANCELLED']
+  broker_order_ref text [note: 'Optional. The broker\'s own opaque identifier for this order, as it appears on broker statements or exports. NULL for manually entered orders. Not used in any calculation, FIFO, or tax logic. Sole purpose: duplicate detection on re-import.
+SELECT 1 FROM broker_order WHERE broker_order_ref = ? AND broker_id = ?
+Without this, duplicate detection requires fuzzy matching on (listing_id, placed_at, requested_quantity) which is ambiguous if you 
+place two identical orders on the same day.']
+
+indexes {
+  (broker_id, broker_order_ref) [unique, note: 'Partial unique index for duplicate detection on import. 
+    Migration must emit this as a partial index:
+    CREATE UNIQUE INDEX idx_broker_order_ref 
+      ON broker_order (broker_id, broker_order_ref) 
+      WHERE broker_order_ref IS NOT NULL;
+    The WHERE clause is required: SQLite treats each NULL as distinct in unique constraints, so without it multiple NULL rows would be allowed but NULLs would also incorrectly block each other. The partial index gives uniqueness only where a value actually exists.']
+}
+
+note:
+'''
+Migration must include:
+CHECK (broker_order_ref IS NULL OR broker_order_ref != '')
+'''
+}
+
+Table trade {
+  id              integer [pk, increment]
+  broker_order_id integer [ref: > broker_order.id, note: 'NULL for manually entered trades without corresponding order']
+  listing_id      integer [not null, ref: > listing.id]
+  broker_id       integer [not null, ref: > broker.id]
+  side            text    [not null, note: 'enum: BUY, SELL']
+  quantity        text [not null, note: 'Decimal string; Units as appearing on the broker statement at execution. These are execution-era units and do not change meaning retroactively. Splits after execution_at do not affect this value.']
+  price           text    [not null, note: 'Decimal string; Per unit price in listing currency']
+  executed_at      text    [not null, note: 'ISO 8601 UTC timestamp; Time of execution']
+  settlement_cash_id integer [ref: > cash.id, note: 'NULL for untracked/external account. The cash account that is debited (BUY) or credited (SELL) on settlement.']
+  settlement_date text    [note: 'ISO 8601 YYYY-MM-DD; date cash is debited/credited.']
+ broker_trade_ref text [note: 'Optional. The broker\'s own opaque identifier for 
+  this specific fill, as it appears on broker statements or CSV exports. 
+  NULL for manually entered trades.
+  Not used in any calculation, FIFO, or tax logic.
+  Sole purpose: duplicate detection on re-import.
+    SELECT 1 FROM trade WHERE broker_trade_ref = ? AND broker_id = ?
+  Without this, duplicate detection requires fuzzy matching on 
+  (listing_id, executed_at, quantity, price) which collides for identical 
+  partial fills of the same order.']
+
+  indexes {
+    (executed_at) [note: 'FIFO ordering join on trade-originated lots and late data guard: any sell with executed_at earlier than new lot acquisition date.']
+    (listing_id)  [note: 'Trade history UI queries by listing.']
+    (broker_id, broker_trade_ref) [unique, note: 'Partial unique index for duplicate detection on import.
+    Migration must emit:
+    CREATE UNIQUE INDEX idx_trade_broker_ref
+      ON trade (broker_id, broker_trade_ref)
+      WHERE broker_trade_ref IS NOT NULL;']
+  }
+
+  note: '''
+listing_id and broker_id are the authoritative values for this trade.
+When broker_order_id IS NOT NULL, the backend validate at insert time that trade.listing_id = broker_order.listing_id AND trade.broker_id = broker_order.broker_id. A mismatch is a hard error, not silently accepted.
+
+Partial fills: one order → multiple trades. Each fill is an independent immutable fact. e.g. a Re=bel order filled in two parts: fill 1 carries the full broker fee, fill 2 carries zero fee; each fill has its own TOB. Both reference the same broker_order_id.
+
+Trades are immutable. Corrections are modelled as a reversing trade (opposite side, same quantity and price) followed by a new corrected trade. Never mutate existing rows.
+
+Migration must include:
+CHECK (broker_trade_ref IS NULL OR broker_trade_ref != '')
+'''
+}
+
+Table trade_fee {
+  id             integer [pk, increment]
+  trade_id       integer [not null, ref: > trade.id]
+  fee_type       text    [not null, note: 'enum: BROKER, TOB, FX, OTHER']
+  amount         text    [not null, note: 'Decimal string']
+  currency_code  text    [not null, ref: > currency.code]
+  notes          text    [note: 'e.g. info about fee types marked as OTHER']
+
+  indexes {
+    (trade_id, fee_type) [note: 'Not unique; a single trade can have multiple TOB rows if the broker splits them across fills.']
+  }
+
+  note: '''
+The effective TOB rate the broker actually charged is recoverable as:
+  amount / (trade.quantity × trade.price)
+This may differ from what the backend computes as "correct" (e.g. DEGIRO vs Re=bel applying different rates for VWCE due to family-level FSMA registration).
+Storing the charged amount as a fact lets the backend flag divergences without preventing the data from being recorded.
+'''
+}
+
+Table lot {
+  id                integer [pk, increment]
+  broker_id_at_acquisition integer [not null, ref: > broker.id, note: 'The broker where this lot was originally acquired. 
+    For trade-originated lots: must equal source_trade.broker_id; validated at insert time.
+    For CA-originated lots: inherited from parent lot at CA processing time and stored directly as a fact.']
+  instrument_id     integer [not null, ref: > instrument.id, note: 'Instrument this lot belongs to. FIFO is per instrument (ISIN). For trade-originated lots: must equal source_trade_id->listing_id->instrument_id. Backend validates this at insert time.']
+
+  source_trade_id   integer [ref: > trade.id, note: 'Non-NULL for trade-originated lots.  BUY trade only.']
+  source_ca_id      integer [ref: > corporate_action.id, note: 'Non-NULL for corporate-action-originated lots.']
+  parent_lot_id integer [ref: > lot.id, note: 'NULL for trade-originated lots. 
+  For CA-originated lots: the lot from which this lot was directly derived. 
+  Used for audit trail only. Belgian CGT pre-2026 detection uses 
+  tax_snapshot_2025 at instrument level, not lot lineage traversal.']
+
+  qty_at_acquisition text   [not null, note: 'Decimal string; Units as credited by the broker at lot creation. For trade-originated lots: the exact quantity on the broker trade confirmation; must equal source_trade.quantity; validated at insert time. For CA-originated lots: the exact quantity credited by the broker after the corporate action, including any broker-applied rounding.']
+
+  price_currency_code text [not null, ref: > currency.code, note: 'Currency that price_per_unit is denominated in. 
+For trade-originated lots: equals source_trade → trade.listing_id → listing.currency_code at execution time; validated at insert time.
+For CA-originated lots: inherited from parent lot at CA processing time and stored as an immutable fact.
+Stored directly on the lot to avoid recursive parent_lot_id traversal at query time.']
+  price_per_unit    text    [not null, note: 'Decimal string; Cost basis per unit. For trade-originated lots: must equal source_trade.price; validated at insert time. For CA-originated lots: computed once from parent lot cost basis and CA cost allocation rules at processing time, then stored as an immutable fact.']
+
+indexes {
+  (instrument_id, id) [note: 'Composite index for FIFO ordering per instrument. 
+    Ordered by acquisition_date ASC, lot.id ASC where acquisition_date is trade.executed_at for trade-originated lots and corporate_action.effective_date for CA-originated lots. lot.id provides stable tie-breaking when two lots share the same acquisition_date.']
+}
+
+note: '''
+Exactly one of source_trade_id or source_ca_id must be non-NULL.
+Migration must include:
+  CHECK ((source_trade_id IS NULL) != (source_ca_id IS NULL))
+
+CORPORATE ACTION TRANSFORMATION MODEL:
+All corporate actions that affect quantity (SPLIT, REVERSE_SPLIT, MERGER_INTO) are
+modelled as lot transformations:
+  1. The original lot is retired via a lot_close row.
+  2. A new CA-originated lot is created with the broker-exact quantity and source_ca_id set.
+  3. If a fractional remainder is paid out as cash, a cash_transaction row with
+     source_ca_id is created for the cash-in-lieu amount.
+
+Ratios in corporate_action are inputs used to compute qty_at_acquisition and
+price_per_unit at CA processing time. They are NEVER applied at query time.
+There is no query-time ratio multiplication anywhere in this schema.
+
+SPINOFFS:
+Because lots are immutable, a spinoff closes the parent lot via lot_close and creates two new CA-originated lots: one for the parent instrument with price_per_unit = old_price × cost_basis_factor and the same qty_at_acquisition, 
+and one for the child instrument with child_qty = parent_lot.qty_at_acquisition × spin_off_ratio and price_per_unit = old_price × (1 - cost_basis_factor). 
+Both new lots have parent_lot_id pointing to the closed lot.
+
+FIFO ORDERING:
+Acquisition date per lot:
+  CASE
+    WHEN source_trade_id IS NOT NULL THEN trade.executed_at
+    ELSE corporate_action.effective_date
+  END
+
+Backend implements FIFO as:
+  LEFT JOIN trade            ON lot.source_trade_id = trade.id
+  LEFT JOIN corporate_action ON lot.source_ca_id    = corporate_action.id
+  WHERE lot.instrument_id = ?
+  ORDER BY acquisition_date ASC, lot.id ASC
+
+QTY_REMAINING:
+  IF a lot_close row exists for this lot → qty_remaining = 0
+  OTHERWISE:
+    qty_remaining = qty_at_acquisition
+                    - SUM(sell_allocation.quantity WHERE origin_lot_id = lot.id)
+
+No ratio multiplication needed. All quantities are in broker-statement units at
+time of recording. A new lot produced by a split already contains the
+broker-exact post-split quantity.
+
+BUY-SIDE FEE ATTRIBUTION (trade-originated lots only):
+  buy_fee_for_allocation = SUM(trade_fee.amount WHERE trade_id = lot.source_trade_id)
+                           × (sell_allocation.quantity / lot.qty_at_acquisition)
+  CA-originated lots have no associated trade_fee rows; cost basis is fully
+  captured in price_per_unit at creation time.
+
+LATE DATA GUARD (backend enforced):
+  When inserting a new lot, if the acquisition timestamp is earlier than the
+  executed_at of ANY existing sell trade for the same instrument_id, the backend
+  must reject the insert and require explicit correction modelling:
+    1. Add a reversing sell trade for the affected sell.
+    2. Add the new lot.
+    3. Re-run FIFO and add a corrected sell trade.
+  This keeps the immutable fact log consistent.
+'''
+}
+
+Table sell_allocation {
+  id            integer [pk, increment]
+  sell_trade_id integer [not null, ref: > trade.id, note: 'SELL trade only']
+  origin_lot_id integer [not null, ref: > lot.id, note: 'The lot being consumed. Backend validates no lot_close row exists for this lot at insert time.']
+  quantity      text [not null, note: 'Decimal string; Units as appearing on the broker statement at execution of the sell. These are execution-era units. Backend validates SUM(quantity WHERE sell_trade_id = ?) = sell_trade.quantity.']
+
+  indexes {
+    (sell_trade_id, origin_lot_id) [unique]
+    (origin_lot_id) [note: 'qty_remaining computation: SUM(quantity WHERE origin_lot_id = lot.id)']
+  }
+
+note: '''
+Records the output of the FIFO matching algorithm, run by backend at sell-entry time.
+Immutable once written.
+
+Semantics: sell_allocation exclusively represents a user-initiated SELL trade consuming
+inventory via FIFO. It is never used for corporate action lot retirements — those are
+modelled in lot_close. This distinction is intentional and must be preserved.
+
+quantity is in execution-era units: the exact units as shown on the broker statement
+at the time of the sell. Since all CA transformations produce new lots in current
+broker units, no ratio conversion is ever needed. qty_remaining on a lot is always:
+  qty_at_acquisition - SUM(sell_allocation.quantity WHERE origin_lot_id = lot.id)
+Both values are in the same unit space by construction.
+
+One sell trade typically produces multiple rows when it consumes units from more than one lot.
+
+Economic gain per allocation (listing currency, fees included) is computed from:
+  - origin_lot.price_per_unit and buy-side fees via origin_lot.source_trade_id → trade_fee
+  - sell_trade.price and sell-side fees via sell_trade_id → trade_fee
+
+EUR taxable gain (fees excluded, per Belgian CGT rules) is computed by backend and
+stored in tax_sell_allocation.
+'''
+}
+
+Table lot_close {
+  id           integer [pk, increment]
+  lot_id       integer [not null, unique, ref: > lot.id, note: 'The lot being retired. unique enforces that a lot can only be closed once.']
+  source_ca_id integer [not null, ref: > corporate_action.id, note: 'The corporate action that caused this closure.']
+  closed_at    text    [not null, note: 'ISO 8601 UTC timestamp. Set to corporate_action.effective_date at processing time.']
+  notes        text
+
+  note: '''
+Records the retirement of a lot due to a corporate action transformation.
+A lot with a lot_close row has qty_remaining = 0 by definition.
+
+This table is semantically distinct from sell_allocation:
+  sell_allocation = FIFO output of a user-initiated SELL trade. Has tax consequences.
+  lot_close       = inventory bookkeeping from a corporate action. No trade, no TOB, no CGT event, never appears in trade history UI.
+
+Which corporate actions produce lot_close rows:
+  SPLIT, REVERSE_SPLIT  → lot closed, new CA-originated lot created with broker-exact qty
+  MERGER_INTO           → lot closed, new CA-originated lot created for target instrument
+  SPIN_OFF              → closes the parent lot. A new CA-originated lot is created for the parent instrument with price_per_unit = old_price × cost_basis_factor and the same qty_at_acquisition. A second new CA-originated lot is created for the child instrument with price_per_unit = old_price × (1 - cost_basis_factor). Both new lots have parent_lot_id pointing to the closed lot.
+  SYMBOL_CHANGE         → no lot_close, no new lot. Purely a listing-level event.
+
+Backend must enforce at sell_allocation insert time:
+  A lot that has a lot_close row must never receive new sell_allocation rows.
+
+Backend must enforce at lot_close insert time:
+  A lot that already has sell_allocation rows dated after closed_at must be rejected.
+'''
+}
+
+Table tax_snapshot_2025 {
+  id                      integer [pk, increment]
+  instrument_id           integer [not null, ref: > instrument.id]
+  broker_id               integer [not null, ref: > broker.id]
+  qty_at_snapshot         text    [not null, note: 'Decimal string; Units held at this broker on 2025-12-31 per their official tax statement. These are 2025-era units: the exact quantities as shown on the broker statement on that date.']
+  hist_cost_per_unit_eur  text    [not null, note: 'Decimal string; Weighted average EUR acquisition cost per unit for all pre-2026 purchases at this broker per their official tax statement. In 2025-era units.']
+  snap_price_per_unit_eur text    [not null, note: 'Decimal string; Official EUR closing price on 2025-12-31 per this broker. In 2025-era units. The broker applies their own FX rate and exchange selection; stored as-received, not recomputed.']
+
+  indexes {
+    (instrument_id, broker_id) [unique]
+  }
+
+note: '''
+Populated once from the official broker tax statement issued before the 2026 filing
+deadline. All three values are immutable external facts after entry. These may differ
+from own calculated values due to differing fx rates, rounding, price data, etc.
+
+AGGREGATION REQUIREMENT (Belgian law):
+The law treats ALL holdings of the same ISIN as one pool, regardless of broker.
+Backend MUST always aggregate ALL rows for a given instrument_id before computing
+the effective tax cost. Using a single broker row in isolation is INCORRECT.
+
+Cross-broker weighted aggregation (backend):
+  total_qty            = SUM(qty_at_snapshot)
+  total_hist_cost_eur  = SUM(qty_at_snapshot × hist_cost_per_unit_eur) / total_qty
+  total_snap_price_eur = SUM(qty_at_snapshot × snap_price_per_unit_eur) / total_qty
+  effective_cost_eur   = if sale_date <= 2030-12-31
+                         → min(total_hist_cost_eur, total_snap_price_eur)
+                         else → total_hist_cost_eur
+
+Rules:
+  - Applies only to lots where acquisition_date < 2026-01-01.
+  - For post-2025 lots, the FIFO lot price is used directly (no snapshot).
+  - From 2031-01-01 onwards, the snapshot comparison rule expires;
+    only hist_cost_per_unit_eur applies.
+
+UNIT-ERA ADJUSTMENT FOR POST-2025 SPLITS:
+qty_at_snapshot, snap_price_per_unit_eur, and hist_cost_per_unit_eur are fixed in
+2025-era units. Unlike regular lots — where a split produces a new CA-originated lot
+with the correct post-split quantity already stored — tax_snapshot_2025 is an
+external broker fact that cannot be replaced. It must be adjusted in code.
+
+If any SPLIT or REVERSE_SPLIT corporate action occurs after 2025-12-31, the backend
+must apply those ratios to the snapshot values before any CGT calculation:
+
+  adjusted_qty         = qty_at_snapshot        × (ratio_to / ratio_from)
+  adjusted_snap_price  = snap_price_per_unit_eur × (ratio_from / ratio_to)
+  adjusted_hist_cost   = hist_cost_per_unit_eur  × (ratio_from / ratio_to)
+
+Apply all corporate_action rows for this instrument_id where
+effective_date > '2025-12-31' in chronological order.
+
+Example: IMIE 25:1 split in 2026.
+  qty_at_snapshot = 100 (2025-era). After adjustment: 100 × 25 = 2500 current units.
+  snap_price_per_unit_eur = €500. After adjustment: €500 / 25 = €20 per current unit.
+  A 2027 sale of 25 current units uses €20 as the snapshot cost basis, not €500.
+
+This is the ONE place in the schema where ratio math happens at query time.
+It applies only to tax_snapshot_2025, not to lot quantities or sell_allocation quantities.
+Failure to apply this adjustment produces catastrophically incorrect CGT figures.
+
+MERGER_INTO post-2025:
+If instrument A merges into instrument B after 2025-12-31, the pre-2026 lots of A become CA-originated lots of B. The tax_snapshot_2025 rows are keyed on instrument_id. The backend would look up the snapshot for instrument A to price the cost basis of the B lots, but A's snapshot needs the merger exchange ratio applied.
+'''
+}
+
+Table tax_sell_allocation {
+  id                 integer [pk, increment]
+  sell_allocation_id integer [not null, unique, ref: > sell_allocation.id]
+  sale_price_eur     text    [not null, note: 'Decimal string; sell_allocation.quantity × sell_trade.price × fx_rate at executed_at; EUR proceeds attributable to this allocation.']
+  buy_price_eur      text    [not null, note: 'Decimal string; sell_allocation.quantity × effective_tax_cost_per_unit_eur. Applies snapshot/2031 rules from tax_snapshot_2025 for pre-2026 lots. For post-2025 lots, uses FIFO lot price × fx_rate at acquisition. EUR cost basis attributable to this allocation.']
+  taxable_gain_eur   text    [not null, note: 'Decimal string; sale_price_eur − buy_price_eur. May be negative (a loss). Broker fees and TOB are excluded per Belgian CGT rules.']
+  tax_year           integer [not null, ref: > cgt_parameters.tax_year, note: 'Calendar year of sell trade executed_at in Europe/Brussels timezone.']
+  computed_at        text    [not null, note: 'ISO 8601 UTC timestamp. Records when this row was last computed. Useful for debugging after rule or data corrections. Rows may be deleted and reinserted; this field reflects the most recent computation.']
+  sale_fx_rate_id integer [ref: > fx_rate.id, note: 'NULL when listing currency is EUR. The official rate used to convert sale proceeds to EUR for Belgian CGT. Should always reference an ECB row.']
+  buy_fx_rate_id integer [ref: > fx_rate.id, note: 'NULL when pre-2026 lot (snapshot already in EUR) OR listing currency is EUR. The broker statement already provides hist_cost_per_unit_eur and snap_price_per_unit_eur in EUR, no FX conversion row exists for a weighted average accumulated over years. When NOT NULL (post-2025 lots), references the ECB rate on the acquisition date used to convert the FIFO lot price to EUR.']
+
+  note: '''
+One row per sell_allocation row.
+Rows are deleted and reinserted when the underlying facts (yay law changes) or computation logic changes.
+computed_at records the moment of the most recent computation for auditability.
+
+Together with cgt_exemption_usage, provides all inputs to compute the final meerwaardebelasting liability for a tax year.
+
+Losses offset gains within the same tax_year. Losses do NOT carry forward to future years under current Belgian CGT rules.
+
+EUR values, fees are excluded per Belgian law.
+'''
+}
+
+Table cgt_parameters {
+  tax_year             integer [pk, note: 'Calendar year, e.g. 2026']
+  exemption_base_eur   text    [not null, note: 'Decimal string; Annual base exemption before any carryforward. €10 000 in 2026.']
+  exemption_cap_eur    text    [not null, note: 'Decimal string; Maximum total exemption including carryforward. €15 000 in 2026.']
+  carryforward_cap_eur text    [not null, note: 'Decimal string; Maximum unused exemption that can be carried to the next year. €1 000 in 2026.']
+}
+
+Table cgt_exemption_usage {
+  tax_year             integer [pk, ref: - cgt_parameters.tax_year, note: 'Calendar year, e.g. 2026']
+  carryforward_in_eur  text [not null, note: 'Decimal string; Unused exemption brought forward from the prior year.']
+  used_eur             text [note: 'Decimal string; Exemption actually applied this year. NULL until tax filing is confirmed.']
+  carryforward_out_eur text [note: 'Decimal string; Unused exemption carried to the next year. NULL until confirmed.']
+  is_confirmed         boolean [not null, default: false, note: 'FALSE = provisional estimate or in-progress year. TRUE = tax filing confirmed. used_eur and carryforward_out_eur are authoritative only when TRUE. Makes it able to distinguish between a confirmed used_eur of 0 and an unconfirmed NULL.']
+
+ note: '''
+Running estimated exemption usage is computed on the backend from tax_sell_allocation at query time:
+  estimated_net_gain = SUM(taxable_gain_eur WHERE tax_year = ?) -- may be negative
+  actual_exemption   = MIN(exemption_cap_eur, exemption_base_eur + carryforward_in_eur)
+  estimated_used     = MIN(actual_exemption, MAX(0, estimated_net_gain))
+  estimated_remaining = actual_exemption − estimated_used
+  carryforward_out_eur = max(min(actual_exemption_eur − used_eur, carryforward_cap_eur), 0). 
+
+No derived values are stored until is_confirmed = TRUE.
+
+APPLICATION INVARIANT — 2026 SEEDING:
+The 2026 row must be inserted at application first-run with:
+  tax_year = 2026
+  carryforward_in_eur = '0'
+  is_confirmed = false
+2026 is the first year of meerwaardebelasting; there is no prior year to carry 
+from. If this row is absent, all CGT queries for 2026 that JOIN this table will 
+silently return no results. Subsequent years are seeded when the prior year's 
+is_confirmed is set to TRUE and carryforward_out_eur is written.
+'''
+}
+
+Table corporate_action {
+  id                   integer [pk, increment]
+  instrument_id        integer [not null, ref: > instrument.id]
+  action_type          text    [not null, note: 'enum: SPLIT, REVERSE_SPLIT, MERGER_INTO, SPIN_OFF, SYMBOL_CHANGE']
+  effective_date       text    [not null, note: 'ISO 8601 YYYY-MM-DD.']
+  ratio_from           text    [not null, note: 'Decimal string; Old units. e.g. 1 for a 2-for-1 split']
+  ratio_to             text    [not null, note: 'Decimal string; New units. e.g. 2 for a 2-for-1 split. Backend: new_qty = qty × (ratio_to / ratio_from); new_price = price × (ratio_from / ratio_to). Total cost basis is preserved.']
+  cost_basis_factor    text    [note: 'Decimal string; NULL except for SPIN_OFF. The fraction of the parent lot cost basis retained by the parent after the spinoff. e.g. 0.85 if 85% of cost basis stays with the parent and 15% transfers to the child. Backend applies this to parent lot price_per_unit at processing time. The child lot receives (1 - cost_basis_factor) of the parent cost basis.']
+  target_instrument_id integer [ref: > instrument.id, note: 'NULL except for MERGER_INTO and SPIN_OFF. The instrument receiving the new lots.']
+  spin_off_ratio       text [note: 'Decimal string; NULL except for SPIN_OFF. Number of child instrument shares issued per one parent share. e.g. 0.30 means 30 child shares per 100 parent shares. Used to compute CA-originated lot qty_at_acquisition for the child instrument: child_qty = parent_lot.qty_at_acquisition × spin_off_ratio. ratio_from and ratio_to are 1:1 for SPIN_OFF since parent quantity is unchanged.']
+  notes                text
+
+  indexes {
+    (instrument_id, effective_date) [note: 'Index for efficient lookup when processing corporate actions.']
+  }
+
+note: '''
+ratio_from and ratio_to are inputs to lot transformation computations at CA processing time. They are NEVER applied as query-time multipliers on lots or sell_allocations.
+The one exception is tax_snapshot_2025 adjustment, see that table's note.
+
+Processing model per action_type:
+
+SPLIT / REVERSE_SPLIT:
+  For each open lot of instrument_id where acquisition_date < effective_date:
+    1. Create a lot_close row retiring the original lot.
+    2. Create a new CA-originated lot with:
+         qty_at_acquisition = broker-credited quantity (ground truth, not pure math)
+         price_per_unit     = old_price × (ratio_from / ratio_to)
+         parent_lot_id      = closed lot id
+         source_ca_id       = this corporate_action.id
+       Total cost basis is preserved: qty × price is invariant.
+    3. If the broker paid a fractional remainder as cash-in-lieu, record a
+       cash_transaction with source_ca_id pointing to this corporate action.
+
+SPIN_OFF:
+  Because lots are immutable, the parent lot cannot have its price_per_unit updated.
+  Instead:
+    1. Close the original parent lot via lot_close.
+    2. Create a new CA-originated lot for the PARENT instrument with:
+     qty_at_acquisition = parent_lot.qty_at_acquisition  ← parent quantity unchanged
+     price_per_unit     = old_price × cost_basis_factor
+     parent_lot_id      = closed lot id
+     source_ca_id       = this corporate_action.id
+    3. Create a new CA-originated lot for the child instrument (target_instrument_id) with:
+         child_qty = parent_lot.qty_at_acquisition × spin_off_ratio
+         price_per_unit = old_price × (1 - cost_basis_factor)
+         parent_lot_id  = closed lot id
+  cost_basis_factor on this row determines the split.
+
+MERGER_INTO:
+  1. Close all open lots of instrument_id via lot_close rows.
+  2. Create new CA-originated lots for target_instrument_id with:
+       qty_at_acquisition = old_qty × (ratio_to / ratio_from)
+       price_per_unit     = old_price × (ratio_from / ratio_to)
+       parent_lot_id      = closed lot id
+       source_ca_id       = this corporate_action.id
+     Total cost basis is preserved: qty × price is invariant.
+     ratio_to / ratio_from is the merger exchange ratio,
+     e.g. ratio_from = 1, ratio_to = 0.5 means 1 old share converts to 0.5 new shares.
+
+SYMBOL_CHANGE:
+  No lot_close rows. No new lots. No quantity or cost basis changes.
+  Model by setting delisted_at on the old listing and inserting a new listing row.
+  ratio_from = ratio_to = 1 always.
+
+CHECK (action_type != 'SYMBOL_CHANGE' OR (ratio_from = '1' AND ratio_to = '1'))
+CHECK (action_type != 'SPIN_OFF' OR spin_off_ratio IS NOT NULL)
+CHECK (action_type != 'SPIN_OFF' OR (ratio_from = '1' AND ratio_to = '1'))
+CHECK (action_type = 'SPIN_OFF' OR cost_basis_factor IS NULL),
+CHECK (action_type != 'SPIN_OFF' OR cost_basis_factor IS NOT NULL),
+CHECK (action_type IN ('MERGER_INTO', 'SPIN_OFF') OR target_instrument_id IS NULL),
+'''
+}
+
+Table dividend {
+  id            integer [pk, increment]
+  instrument_id integer [not null, ref: > instrument.id]
+  broker_id     integer [not null, ref: > broker.id]
+  ex_date       text    [not null, note: 'ISO 8601 YYYY-MM-DD. Determines eligibility.']
+  pay_date      text    [not null, note: 'ISO 8601 YYYY-MM-DD. When cash is credited.']
+  quantity_held text    [not null, note: 'Decimal string; Units held at ex_date per broker statement. Stored as an external fact. Backend must validate this matches the derived quantity from lots at ex_date and warn if they diverge.']
+  gross_per_unit text   [not null, note: 'Decimal string; Gross dividend per unit before any deductions, in currency_code.']
+  currency_code text    [not null, ref: > currency.code]
+}
+
+Table dividend_fee {
+  id            integer [pk, increment]
+  dividend_id   integer [not null, ref: > dividend.id]
+  fee_type      text    [not null, note: 'enum: WITHHOLDING_TAX, BROKER_FEE, FX, OTHER']
+  amount        text    [not null, note: 'Decimal string; Deduction from gross.']
+  currency_code text    [not null, ref: > currency.code]
+  notes         text    [note: 'Required when fee_type = OTHER.']
+
+note: '''
+Migration must include:
+CHECK (fee_type != 'OTHER' OR (notes IS NOT NULL AND notes != '')),
+'''
+}
+
+Table lot_transfer {
+  id              integer [pk, increment]
+  lot_id          integer [not null, ref: > lot.id]
+  from_broker_id  integer [not null, ref: > broker.id]
+  to_broker_id    integer [not null, ref: > broker.id]
+  transferred_at  text    [not null, note: 'ISO 8601 UTC timestamp']
+  notes           text
+
+indexes {
+  (lot_id, transferred_at) [note: 'Current broker derivation per lot: 
+    WHERE lot_id = ? ORDER BY transferred_at DESC LIMIT 1']
+}
+
+note: '''
+Does not affect qty_at_acquisition or price_per_unit of the lot.
+Immutable facts on the lot are never mutated.
+
+Current broker for a lot is derived on the backend as:
+  SELECT to_broker_id FROM lot_transfer
+  WHERE lot_id = ?
+  ORDER BY transferred_at DESC
+  LIMIT 1
+If no transfer exists, current broker = lot.broker_id_at_acquisition.
+
+qty_remaining at transfer time:
+  qty_at_acquisition - SUM(sell_allocation.quantity
+    WHERE origin_lot_id = lot.id
+    AND sell_trade.executed_at <= transferred_at)
+A lot with a lot_close row has qty_remaining = 0 regardless of transfer state.
+Partial sells before the transfer are accounted for automatically.
+
+BACKEND VALIDATION REQUIRED AT INSERT:
+  from_broker_id must match the lot's actual current broker at transferred_at.
+  Verify by querying: the most recent lot_transfer.to_broker_id WHERE transferred_at < this transfer's transferred_at,
+  or lot.broker_id_at_acquisition if no prior transfer exists.
+  If from_broker_id does not match the derived current broker, reject the insert.
+  A mismatch means the transfer record is inconsistent with the known custody chain.
+  This must have an explicit test case covering both the no-prior-transfer path
+  and the has-prior-transfer path.
+
+Migration must include:
+CHECK (from_broker_id != to_broker_id)
+'''
+}
+
+// ============================================================
+// LEGEND
+// ============================================================
+// Instrument (ISIN)         = tax identity
+// Listing (exchange/ticker) = trading identity
+// Trade                     = immutable execution fact
+// Lot                       = FIFO acquisition unit (one per BUY trade or CA-originated via transformation)
+// lot_close                 = CA-driven lot retirement (no tax event, distinct from sell_allocation)
+// sell_allocation           = FIFO resolution output (immutable once written)
+// trade_fee / dividend_fee  = atomic cost facts
+// fx_rate / price_history   = historical market facts
+// cash / cash_transaction   = immutable cash ledger
+// tax_snapshot_2025         = external immutable broker facts (one-time)
+// tax_sell_allocation       = derived immutable CGT facts
+// cgt_parameters            = law facts (confirmed or estimated)
+// cgt_exemption_usage       = filing facts (populated at tax time)
+// corporate_action          = structural change facts
