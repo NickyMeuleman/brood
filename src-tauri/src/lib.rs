@@ -5,10 +5,10 @@
 
 mod db;
 
-use db::{init_db, Db};
+use db::init_db;
 use serde::{Deserialize, Serialize};
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use tauri::{async_runtime::block_on, Manager, State};
+use tauri::{async_runtime::block_on, Manager};
 use tauri_specta::{collect_commands, Builder};
 use thiserror::Error;
 
@@ -42,30 +42,6 @@ pub struct Count {
 
 #[tauri::command]
 #[specta::specta]
-async fn get_count(state: State<'_, Db>, id: i64) -> Result<Count, AppError> {
-    sqlx::query_as!(Count, "SELECT id, value FROM counts WHERE id = ?", id)
-        .fetch_one(&state.pool)
-        .await
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn increment_count(state: State<'_, Db>, id: i64) -> Result<(), AppError> {
-    let result = sqlx::query!("UPDATE counts SET value = value + 1 WHERE id = ?;", id)
-        .execute(&state.pool)
-        .await
-        .map_err(AppError::from)?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
@@ -78,8 +54,7 @@ fn count(to: u32) -> Vec<u32> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder =
-        Builder::new().commands(collect_commands![greet, count, get_count, increment_count]);
+    let builder = Builder::new().commands(collect_commands![greet, count]);
 
     #[cfg(debug_assertions)]
     builder

@@ -1,12 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import reactLogo from "../assets/react.svg";
 import { commands } from "../bindings.ts";
-import { useCount } from "../hooks/useCount";
 import { useUIStore } from "../stores/ui";
 import styles from "./App.module.css";
 
 function App() {
-	const { countQuery, incrementMutation } = useCount(1);
 	const name = useUIStore((state) => state.name);
 	const setName = useUIStore((state) => state.setName);
 
@@ -89,22 +87,6 @@ function App() {
 					<li key={n}>{n}</li>
 				))}
 			</ul>
-			<div>
-				{countQuery.isLoading && <p>Loading count...</p>}
-				{countQuery.isError && (
-					<div className="text-red-600">
-						<p>Failed to load count</p>
-						<p className="text-sm">{countQuery.error.message}</p>
-					</div>
-				)}
-				{countQuery.isSuccess && <h2>Count: {countQuery.data}</h2>}
-			</div>
-			<button type="button" onClick={() => incrementMutation.mutate()}>
-				Increment{" "}
-				<span className={`text-red-600 text-sm`}>
-					{incrementMutation.error?.message}
-				</span>
-			</button>
 		</main>
 	);
 }

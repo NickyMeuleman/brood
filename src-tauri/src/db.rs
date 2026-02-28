@@ -25,7 +25,8 @@ pub async fn init_db(app: &App) -> Db {
 
     let options = SqliteConnectOptions::new()
         .filename(&db_path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .foreign_keys(true);
     let pool = SqlitePool::connect_with(options)
         .await
         .expect("Failed to connect to sqlitepool");
