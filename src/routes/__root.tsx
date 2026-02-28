@@ -15,6 +15,7 @@ const RootLayout = () => (
 			<Link to="/about">About</Link>
 			<Link to="/people">People</Link>
 			<Link to="/payments">Payments</Link>
+			<Link to="/chart">Chart</Link>
 		</div>
 		<hr />
 		<Outlet />
