@@ -1,3 +1,8 @@
+set dotenv-path := "src-tauri/.env"
+
+dev_db_raw := env_var("DATABASE_URL")
+dev_db     := replace(dev_db_raw, "sqlite:", "")
+
 default: dev
 
 dev:
@@ -24,3 +29,6 @@ db-reset:
   cd src-tauri && sqlx database create
   just migrate
   just prepare
+
+seed: db-reset
+  cd src-tauri && sqlite3 {{dev_db}} < seeds/basic_dev_seed.sql
