@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import App from "../components/App.tsx";
+import Holdings from "@/features/holdings/page.tsx";
 
 export const Route = createFileRoute("/")({
 	component: Index,
@@ -8,7 +8,7 @@ export const Route = createFileRoute("/")({
 function Index() {
 	return (
 		<div className="p-2">
-			<App />
+			<Holdings />
 		</div>
 	);
 }
