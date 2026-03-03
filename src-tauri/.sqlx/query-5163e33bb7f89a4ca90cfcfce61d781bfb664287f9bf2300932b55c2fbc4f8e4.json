@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT\n  *\nFROM\n  sell_allocation sa\nWHERE\n  sa.origin_lot_id NOT IN (\n    SELECT\n      lot_id\n    FROM\n      lot_close\n  )\n    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "sell_trade_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "origin_lot_id",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "quantity",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5163e33bb7f89a4ca90cfcfce61d781bfb664287f9bf2300932b55c2fbc4f8e4"
+}

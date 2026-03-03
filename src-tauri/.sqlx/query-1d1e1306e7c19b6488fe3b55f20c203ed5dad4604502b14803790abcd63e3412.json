@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT\n  ph.listing_id,\n  ph.close\nFROM\n  price_history ph\nWHERE\n  (\n    ph.listing_id,\n    ph.date\n  ) IN (\n    SELECT\n      listing_id,\n      MAX(date)\n    FROM\n      price_history\n    GROUP BY\n      listing_id\n  )\n    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "listing_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "close",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1d1e1306e7c19b6488fe3b55f20c203ed5dad4604502b14803790abcd63e3412"
+}

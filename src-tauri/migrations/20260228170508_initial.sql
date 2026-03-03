@@ -364,6 +364,7 @@ CREATE TABLE lot (
   id INTEGER PRIMARY KEY,
   broker_id_at_acquisition INTEGER NOT NULL REFERENCES broker (id),
   instrument_id INTEGER NOT NULL REFERENCES instrument (id),
+  listing_id INTEGER NOT NULL REFERENCES listing (id),
   source_trade_id INTEGER REFERENCES trade (id),
   source_ca_id INTEGER REFERENCES corporate_action (id),
   parent_lot_id INTEGER REFERENCES lot (id),
