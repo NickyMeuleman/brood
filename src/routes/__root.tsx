@@ -12,10 +12,9 @@ const RootLayout = () => (
 			<Link to="/" className="data-[status=active]:bg-red-700">
 				Home
 			</Link>
-			<Link to="/about">About</Link>
 			<Link to="/people">People</Link>
-			<Link to="/payments">Payments</Link>
 			<Link to="/chart">Chart</Link>
+			<Link to="/admin">Admin</Link>
 		</div>
 		<hr />
 		<Outlet />
