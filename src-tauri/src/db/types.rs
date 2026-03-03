@@ -1,4 +1,4 @@
-// Internal database types only. Nothing here crosses the Tauri
+// Internal database types. No main types here cross the Tauri
 // command boundary. Response structs with serde/specta derives
 // are defined alongside the commands that use them.
 //
@@ -14,6 +14,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InstrumentType {
     Etf,
     Fund,
@@ -22,38 +23,43 @@ pub enum InstrumentType {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Replication {
     Physical,
     Synthetic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderType {
     Market,
     Limit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Side {
     Buy,
     Sell,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeFeeType {
     Broker,
-    Tob, // maps to "TOB"
+    Tob,
     Fx,
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DividendFeeType {
     WithholdingTax,
     BrokerFee,
@@ -61,27 +67,30 @@ pub enum DividendFeeType {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CashDirection {
     Credit,
     Debit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CashCategory {
     Trade,
     Fee,
     Tax,
     Dividend,
     Transfer,
-    Fx, // maps to "FX"
+    Fx,
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CorporateActionType {
     Split,
     ReverseSplit,
@@ -90,17 +99,19 @@ pub enum CorporateActionType {
     SymbolChange,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FxRateSource {
-    Ecb, // maps to "ECB"
-    Nbb, // maps to "NBB"
+    Ecb,
+    Nbb,
     Broker,
     Manual,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PriceSource {
     Exchange,
     Broker,
@@ -111,7 +122,9 @@ pub enum PriceSource {
 // Row structs
 // ============================================================
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow, Serialize, specta::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Currency {
     pub code: String,
 }

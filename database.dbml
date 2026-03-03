@@ -343,8 +343,14 @@ Table lot {
   broker_id_at_acquisition integer [not null, ref: > broker.id, note: 'The broker where this lot was originally acquired. 
     For trade-originated lots: must equal source_trade.broker_id; validated at insert time.
     For CA-originated lots: inherited from parent lot at CA processing time and stored directly as a fact.']
-  instrument_id     integer [not null, ref: > instrument.id, note: 'Instrument this lot belongs to. FIFO is per instrument (ISIN). For trade-originated lots: must equal source_trade_id->listing_id->instrument_id. Backend validates this at insert time.']
-
+  instrument_id     integer [not null, ref: > instrument.id, note: 'Instrument this lot belongs to.
+    FIFO is per instrument (ISIN).
+    For trade-originated lots: must equal source_trade_id->listing_id->instrument_id.
+    Backend validates this at insert time.']
+  listing_id        integer [not null, ref: > listing.id, note: 'The listing where this lot was acquired.
+    For trade-originated lots: must equal source_trade_id->listing_id.
+    For CA-originated lots: inherited from parent_lot and stored directly as fact.
+    Backend validates this at insert time.']
   source_trade_id   integer [ref: > trade.id, note: 'Non-NULL for trade-originated lots.  BUY trade only.']
   source_ca_id      integer [ref: > corporate_action.id, note: 'Non-NULL for corporate-action-originated lots.']
   parent_lot_id integer [ref: > lot.id, note: 'NULL for trade-originated lots. 
