@@ -3,8 +3,10 @@
     windows_subsystem = "windows"
 )]
 
+mod commands;
 mod db;
 
+use commands::holdings::get_holdings;
 use db::init_db;
 use serde::{Deserialize, Serialize};
 use specta_typescript::{BigIntExportBehavior, Typescript};
@@ -54,7 +56,7 @@ fn count(to: u32) -> Vec<u32> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = Builder::new().commands(collect_commands![greet, count]);
+    let builder = Builder::new().commands(collect_commands![greet, count, get_holdings]);
 
     #[cfg(debug_assertions)]
     builder
