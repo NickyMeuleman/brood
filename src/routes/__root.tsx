@@ -9,12 +9,18 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 const RootLayout = () => (
 	<>
 		<div className="flex gap-2 p-2">
-			<Link to="/" className="data-[status=active]:bg-red-700">
+			<Link to="/" className="data-[status=active]:font-bold">
 				Home
 			</Link>
-			<Link to="/people">People</Link>
-			<Link to="/chart">Chart</Link>
-			<Link to="/admin">Admin</Link>
+			<Link to="/people" className="data-[status=active]:font-bold">
+				People
+			</Link>
+			<Link to="/chart" className="data-[status=active]:font-bold">
+				Chart
+			</Link>
+			<Link to="/admin" className="data-[status=active]:font-bold">
+				Admin
+			</Link>
 		</div>
 		<hr />
 		<Outlet />

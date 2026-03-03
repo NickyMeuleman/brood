@@ -3,7 +3,7 @@ import { commands } from "../../bindings.ts";
 import { columns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
-const AdminPage = () => {
+const HoldingsPage = () => {
 	const { data } = useQuery({
 		queryKey: ["holdings"],
 		queryFn: async () => {
@@ -21,4 +21,4 @@ const AdminPage = () => {
 	);
 };
 
-export default AdminPage;
+export default HoldingsPage;
