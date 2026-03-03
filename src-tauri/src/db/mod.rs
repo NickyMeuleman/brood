@@ -2,6 +2,8 @@ use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use std::{fs, path::PathBuf};
 use tauri::{App, Manager};
 
+pub mod types;
+
 pub struct Db {
     pub pool: SqlitePool,
 }
