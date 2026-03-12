@@ -4,6 +4,8 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { routeTree } from "./routeTree.gen";
 import "@/styles/global.css";
+import type { RowData } from "@tanstack/react-table";
+import type { HoldingsTotals } from "./bindings";
 
 const router = createRouter({ routeTree });
 const queryClient = new QueryClient();
@@ -11,6 +13,12 @@ const queryClient = new QueryClient();
 declare module "@tanstack/react-router" {
 	interface Register {
 		router: typeof router;
+	}
+}
+
+declare module "@tanstack/react-table" {
+	interface TableMeta<TData extends RowData> {
+		totals?: HoldingsTotals;
 	}
 }
 

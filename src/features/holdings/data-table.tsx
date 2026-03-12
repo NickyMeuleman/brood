@@ -4,6 +4,7 @@ import {
 	getCoreRowModel,
 	getSortedRowModel,
 	type SortingState,
+	type TableMeta,
 	useReactTable,
 } from "@tanstack/react-table";
 import { useState } from "react";
@@ -20,11 +21,13 @@ import {
 interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
 	data: TData[];
+	meta?: TableMeta<TData>;
 }
 
 export function DataTable<TData, TValue>({
 	columns,
 	data,
+	meta,
 }: DataTableProps<TData, TValue>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -35,6 +38,7 @@ export function DataTable<TData, TValue>({
 		getSortedRowModel: getSortedRowModel(),
 		onSortingChange: setSorting,
 		state: { sorting },
+    meta
 	});
 
 	return (

@@ -1,10 +1,9 @@
 import type { Column } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
-import type { Holding } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const SortableHeaderButton = ({
+export const SortableHeaderButton = <TData, TValue>({
 	className,
 	label,
 	column,
@@ -12,7 +11,7 @@ export const SortableHeaderButton = ({
 }: {
 	className?: string;
 	label: string;
-	column: Column<Holding, string>;
+	column: Column<TData, TValue>;
 	align?: "start" | "end";
 }) => {
 	return (
