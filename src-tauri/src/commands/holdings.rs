@@ -17,18 +17,73 @@ pub struct Holding {
     instrument_type: InstrumentType,
     currency_code: String,
     quantity: Decimal,
+
+    // local currency (currency_code)
     avg_cost_basis: Decimal,
     avg_cost_basis_with_fees: Decimal,
     current_price: Decimal,
     market_value: Decimal,
     unrealised_gain: Decimal,
     unrealised_gain_with_fees: Decimal,
+    total_fees: Decimal,
+    // Total cash outflow to acquire the current position, excluding fees.
+    // This is the accumulator used for unrealised_gain and percentage_gain —
+    // exposing it directly avoids reconstructing it from derived values.
+    total_cost: Decimal,
+    total_cost_with_fees: Decimal,
+
+    // EUR (= local currency values for EUR holdings)
+    // Converted at the current spot rate.
+    // TODO: values that are aggregated over time are approximations — a correct historical-rate value requires the FX rate
+    // at each lot's acquisition date, not the current spot rate. Acceptable for
+    // display; not suitable for tax reporting.
+    avg_cost_basis_eur: Decimal,
+    avg_cost_basis_with_fees_eur: Decimal,
+    market_value_eur: Decimal,
+    unrealised_gain_eur: Decimal,
+    unrealised_gain_with_fees_eur: Decimal,
+    total_fees_eur: Decimal,
+    total_cost_eur: Decimal,
+    total_cost_with_fees_eur: Decimal,
+
     // percentage_gain = unrealised_gain / total_cost.
     // Mathematically equal to (current_price - avg_cost_basis) / avg_cost_basis, because quantity cancels out.
-    // Computed in Rust to avoid frontend arithmetic
     percentage_gain: Decimal,
     percentage_gain_with_fees: Decimal,
-    total_fees: Decimal,
+}
+
+/// How much of the portfolio is held in a given currency,
+/// for the currency breakdown UI.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct CurrencyAllocation {
+    currency_code: String,
+    market_value: Decimal,
+    market_value_eur: Decimal,
+    /// market_value_eur / totals.market_value_eur
+    weight: Decimal,
+}
+
+/// Portfolio-level aggregates in EUR.
+/// Sent in the response envelope so the frontend never has to
+/// reduce across rows — these are read directly by table footers
+/// and the portfolio_weight column via table meta.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct HoldingsTotals {
+    market_value_eur: Decimal,
+    unrealised_gain_eur: Decimal,
+    unrealised_gain_with_fees_eur: Decimal,
+    total_fees_eur: Decimal,
+    percentage_gain: Decimal,
+    percentage_gain_with_fees: Decimal,
+    total_cost_eur: Decimal,
+    total_cost_with_fees_eur: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct HoldingsResponse {
+    holdings: Vec<Holding>,
+    totals: HoldingsTotals,
+    currency_breakdown: Vec<CurrencyAllocation>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -40,7 +95,7 @@ struct TradeFeeRow {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_holdings(db: State<'_, Db>) -> Result<Vec<Holding>, AppError> {
+pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppError> {
     let lots = sqlx::query!(
         r#"
 SELECT
@@ -58,7 +113,7 @@ SELECT
 FROM
   lot l
   JOIN instrument i ON l.instrument_id = i.id
-  JOIN listing li ON li.instrument_id = i.id
+  JOIN listing li ON li.id = l.listing_id
 WHERE
   (
     l.id NOT IN (
@@ -117,6 +172,42 @@ WHERE
     .fetch_all(&db.pool)
     .await
     .map_err(AppError::from)?;
+
+    // Latest FX rate to EUR per currency.
+    // EUR itself is not in fx_rate; handled as rate = 1 at lookup time.
+    let fx_rows = sqlx::query!(
+        r#"
+        SELECT fr.currency, fr.rate_to_eur
+        FROM fx_rate fr
+        WHERE fr.date = (
+            SELECT MAX(fr2.date)
+            FROM fx_rate fr2
+            WHERE fr2.currency = fr.currency
+        )
+        "#
+    )
+    .fetch_all(&db.pool)
+    .await
+    .map_err(AppError::from)?;
+
+    let fx_map: HashMap<String, Decimal> = fx_rows
+        .into_iter()
+        .map(|r| {
+            let rate = Decimal::from_str(&r.rate_to_eur)
+                .map_err(|_| AppError::Database("Malformed fx_rate rate_to_eur".to_string()))?;
+            Ok((r.currency, rate))
+        })
+        .collect::<Result<_, AppError>>()?;
+
+    let eur_rate = |currency: &str| -> Result<Decimal, AppError> {
+        if currency == "EUR" {
+            return Ok(Decimal::ONE);
+        }
+        fx_map
+            .get(currency)
+            .copied()
+            .ok_or_else(|| AppError::Database(format!("No FX rate found for {currency}")))
+    };
 
     // Sum sold quantity per lot
     // lot_id -> sold_qty
@@ -198,9 +289,19 @@ WHERE
             market_value: Decimal::ZERO,
             unrealised_gain: Decimal::ZERO,
             unrealised_gain_with_fees: Decimal::ZERO,
+            total_fees: Decimal::ZERO,
+            avg_cost_basis_eur: Decimal::ZERO,
+            avg_cost_basis_with_fees_eur: Decimal::ZERO,
+            market_value_eur: Decimal::ZERO,
+            unrealised_gain_eur: Decimal::ZERO,
+            unrealised_gain_with_fees_eur: Decimal::ZERO,
+            total_fees_eur: Decimal::ZERO,
             percentage_gain: Decimal::ZERO,
             percentage_gain_with_fees: Decimal::ZERO,
-            total_fees: Decimal::ZERO,
+            total_cost: Decimal::ZERO,
+            total_cost_with_fees: Decimal::ZERO,
+            total_cost_eur: Decimal::ZERO,
+            total_cost_with_fees_eur: Decimal::ZERO,
         });
 
         holding.quantity += remaining;
@@ -219,7 +320,6 @@ WHERE
 
         holding.avg_cost_basis = tc / holding.quantity;
         holding.avg_cost_basis_with_fees = tcf / holding.quantity;
-        holding.total_fees = total_fees_by_listing[&row.listing_id];
     }
 
     // PERF: future enhancement: only fetch prices in holdings instead of all prices
@@ -249,25 +349,100 @@ WHERE ph.date = (
         })
         .collect::<Result<_, AppError>>()?;
 
-    // Apply prices and compute market value, gains, and percentages.
+    // Apply prices, compute gains, percentages, and EUR values.
     for (listing_id, holding) in holdings.iter_mut() {
         if let Some(&price) = price_map.get(listing_id) {
             let tc = total_costs[listing_id];
+            debug_assert!(tc != Decimal::ZERO);
             let tcf = total_costs_with_fees[listing_id];
+            debug_assert!(tcf != Decimal::ZERO);
+            let tf = total_fees_by_listing[listing_id];
             let market_value = price * holding.quantity;
+            let rate = eur_rate(&holding.currency_code)?;
 
             holding.current_price = price;
             holding.market_value = market_value;
             holding.unrealised_gain = market_value - tc;
             holding.unrealised_gain_with_fees = market_value - tcf;
+            holding.total_fees = tf;
             // Divide by total_cost, not avg_cost_basis × quantity, to avoid
             // reintroducing the precision loss from the avg_cost_basis division.
             holding.percentage_gain = holding.unrealised_gain / tc;
             holding.percentage_gain_with_fees = holding.unrealised_gain_with_fees / tcf;
+
+            holding.market_value_eur = market_value * rate;
+            holding.unrealised_gain_eur = holding.unrealised_gain * rate;
+            holding.unrealised_gain_with_fees_eur = holding.unrealised_gain_with_fees * rate;
+            // TODO: avg_cost_basis_eur, avg_cost_basis_with_fees_eur, and total_fees_eur
+            // are approximations — correct values require the FX rate at each lot's
+            // acquisition date, not the current spot rate. Acceptable for display;
+            // not suitable for tax reporting.
+            holding.avg_cost_basis_eur = holding.avg_cost_basis * rate;
+            holding.avg_cost_basis_with_fees_eur = holding.avg_cost_basis_with_fees * rate;
+            holding.total_fees_eur = tf * rate;
+
+            holding.total_cost = tc;
+            holding.total_cost_with_fees = tcf;
+            holding.total_cost_eur = tc * rate;
+            holding.total_cost_with_fees_eur = tcf * rate;
         }
     }
 
-    let mut res: Vec<Holding> = holdings.into_values().collect();
-    res.sort_by(|a, b| a.ticker.cmp(&b.ticker));
-    Ok(res)
+    let mut holdings_vec: Vec<Holding> = holdings.into_values().collect();
+    holdings_vec.sort_by(|a, b| a.ticker.cmp(&b.ticker));
+
+    let mut totals = HoldingsTotals {
+        market_value_eur: Decimal::ZERO,
+        unrealised_gain_eur: Decimal::ZERO,
+        unrealised_gain_with_fees_eur: Decimal::ZERO,
+        total_fees_eur: Decimal::ZERO,
+        percentage_gain: Decimal::ZERO,
+        percentage_gain_with_fees: Decimal::ZERO,
+        total_cost_eur: Decimal::ZERO,
+        total_cost_with_fees_eur: Decimal::ZERO,
+    };
+    // currency_code → (market_value in that currency, market_value_eur)
+    let mut currency_map: HashMap<String, (Decimal, Decimal)> = HashMap::new();
+
+    for h in &holdings_vec {
+        totals.market_value_eur += h.market_value_eur;
+        totals.unrealised_gain_eur += h.unrealised_gain_eur;
+        totals.unrealised_gain_with_fees_eur += h.unrealised_gain_with_fees_eur;
+        totals.total_fees_eur += h.total_fees_eur;
+        totals.total_cost_eur += h.total_cost_eur;
+        totals.total_cost_with_fees_eur += h.total_cost_with_fees_eur;
+
+        let entry = currency_map
+            .entry(h.currency_code.clone())
+            .or_insert((Decimal::ZERO, Decimal::ZERO));
+        entry.0 += h.market_value;
+        entry.1 += h.market_value_eur;
+    }
+    totals.percentage_gain = totals.unrealised_gain_eur / totals.total_cost_eur;
+    totals.percentage_gain_with_fees =
+        totals.unrealised_gain_with_fees_eur / totals.total_cost_with_fees_eur;
+
+    let total_mv_eur = totals.market_value_eur;
+    let mut currency_breakdown: Vec<CurrencyAllocation> = currency_map
+        .into_iter()
+        .map(
+            |(currency_code, (market_value, market_value_eur))| CurrencyAllocation {
+                currency_code,
+                market_value,
+                market_value_eur,
+                weight: if total_mv_eur.is_zero() {
+                    Decimal::ZERO
+                } else {
+                    market_value_eur / total_mv_eur
+                },
+            },
+        )
+        .collect();
+    currency_breakdown.sort_by(|a, b| b.market_value_eur.cmp(&a.market_value_eur));
+
+    Ok(HoldingsResponse {
+        holdings: holdings_vec,
+        totals,
+        currency_breakdown,
+    })
 }
