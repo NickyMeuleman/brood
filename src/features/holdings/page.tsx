@@ -43,7 +43,6 @@ const HoldingsPage = () => {
 	const percentageGain = includeFees
 		? (Number(data?.totals.percentage_gain_with_fees) ?? 0)
 		: (Number(data?.totals.percentage_gain) ?? 0);
-	console.log(percentageGain);
 
 	return (
 		<div className="@container/main container mx-auto py-10">

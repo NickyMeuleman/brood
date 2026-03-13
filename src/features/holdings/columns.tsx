@@ -34,6 +34,7 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 				totalCostEur: (row: Holding) => Number(row.total_cost_eur),
 				percentageGain: (row: Holding) => Number(row.percentage_gain),
 			};
+
 	return [
 		columnHelper.accessor("ticker", {
 			header: ({ column }) => (
@@ -109,6 +110,39 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 				const formatted = formatCurrency(val, row.original.currency_code);
 				return <div className="text-right font-medium">{formatted}</div>;
 			},
+		}),
+		columnHelper.accessor((row) => Number(row.total_fees), {
+			id: "total_fees",
+			header: ({ column }) => (
+				<SortableHeaderButton column={column} label="Fees" align="end" />
+			),
+			cell: ({ row, getValue }) => (
+				<div className="text-right font-medium">
+					{formatCurrency(getValue(), row.original.currency_code)}
+				</div>
+			),
+			footer: ({ table }) => {
+				const total = table
+					.getFilteredRowModel()
+					.rows.reduce((acc, r) => acc + Number(r.original.total_fees_eur), 0);
+				return (
+					<div className="text-right font-bold">{formatCurrency(total)}</div>
+				);
+			},
+		}),
+		columnHelper.accessor((row) => Number(row.fee_drag), {
+			id: "fee_drag",
+			header: ({ column }) => (
+				<SortableHeaderButton column={column} label="Fee drag" align="end" />
+			),
+			// Fee drag is always relative to total_cost (without fees)
+			// using total_cost_with_fees as denominator would be circular.
+			// No need for a fees toggle since it's always showing the fee picture.
+			cell: ({ getValue }) => (
+				<div className="text-right font-medium">
+					{formatPercentage(getValue())}
+				</div>
+			),
 		}),
 		columnHelper.accessor("market_value", {
 			header: ({ column }) => (

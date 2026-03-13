@@ -253,18 +253,22 @@ Table broker_order {
   limit_price        text    [note: 'Decimal string in listing currency. NULL for MARKET orders']
   placed_at          text    [not null, note: 'ISO 8601 UTC timestamp']
   cancelled_at       text    [note: 'ISO 8601 UTC timestamp. NULL = not cancelled. Order status derived on backend: no fills → OPEN, partial fill → PARTIAL, complete fill → FILLED, cancelled_at IS NOT NULL → CANCELLED']
-  broker_order_ref text [note: 'Optional. The broker\'s own opaque identifier for this order, as it appears on broker statements or exports. NULL for manually entered orders. Not used in any calculation, FIFO, or tax logic. Sole purpose: duplicate detection on re-import.
+  broker_order_ref text [note: '''
+    Optional. The broker\'s own opaque identifier for this order, as it appears on broker statements or exports. NULL for manually entered orders. Not used in any calculation, FIFO, or tax logic. Sole purpose: duplicate detection on re-import.
 SELECT 1 FROM broker_order WHERE broker_order_ref = ? AND broker_id = ?
 Without this, duplicate detection requires fuzzy matching on (listing_id, placed_at, requested_quantity) which is ambiguous if you 
-place two identical orders on the same day.']
+place two identical orders on the same day.
+''']
 
 indexes {
-  (broker_id, broker_order_ref) [unique, note: 'Partial unique index for duplicate detection on import. 
+  (broker_id, broker_order_ref) [unique, note: '''
+    Partial unique index for duplicate detection on import. 
     Migration must emit this as a partial index:
     CREATE UNIQUE INDEX idx_broker_order_ref 
       ON broker_order (broker_id, broker_order_ref) 
       WHERE broker_order_ref IS NOT NULL;
-    The WHERE clause is required: SQLite treats each NULL as distinct in unique constraints, so without it multiple NULL rows would be allowed but NULLs would also incorrectly block each other. The partial index gives uniqueness only where a value actually exists.']
+    The WHERE clause is required: SQLite treats each NULL as distinct in unique constraints, so without it multiple NULL rows would be allowed but NULLs would also incorrectly block each other. The partial index gives uniqueness only where a value actually exists.
+    ''']
 }
 
 note:
@@ -285,7 +289,8 @@ Table trade {
   executed_at      text    [not null, note: 'ISO 8601 UTC timestamp; Time of execution']
   settlement_cash_id integer [ref: > cash.id, note: 'NULL for untracked/external account. The cash account that is debited (BUY) or credited (SELL) on settlement.']
   settlement_date text    [note: 'ISO 8601 YYYY-MM-DD; date cash is debited/credited.']
- broker_trade_ref text [note: 'Optional. The broker\'s own opaque identifier for 
+ broker_trade_ref text [note: '''
+  Optional. The broker\'s own opaque identifier for 
   this specific fill, as it appears on broker statements or CSV exports. 
   NULL for manually entered trades.
   Not used in any calculation, FIFO, or tax logic.
@@ -293,16 +298,19 @@ Table trade {
     SELECT 1 FROM trade WHERE broker_trade_ref = ? AND broker_id = ?
   Without this, duplicate detection requires fuzzy matching on 
   (listing_id, executed_at, quantity, price) which collides for identical 
-  partial fills of the same order.']
+  partial fills of the same order.
+  ''']
 
   indexes {
     (executed_at) [note: 'FIFO ordering join on trade-originated lots and late data guard: any sell with executed_at earlier than new lot acquisition date.']
     (listing_id)  [note: 'Trade history UI queries by listing.']
-    (broker_id, broker_trade_ref) [unique, note: 'Partial unique index for duplicate detection on import.
+    (broker_id, broker_trade_ref) [unique, note: '''
+      Partial unique index for duplicate detection on import.
     Migration must emit:
     CREATE UNIQUE INDEX idx_trade_broker_ref
       ON trade (broker_id, broker_trade_ref)
-      WHERE broker_trade_ref IS NOT NULL;']
+      WHERE broker_trade_ref IS NOT NULL;
+      ''']
   }
 
   note: '''
@@ -340,35 +348,47 @@ Storing the charged amount as a fact lets the backend flag divergences without p
 
 Table lot {
   id                integer [pk, increment]
-  broker_id_at_acquisition integer [not null, ref: > broker.id, note: 'The broker where this lot was originally acquired. 
+  broker_id_at_acquisition integer [not null, ref: > broker.id, note: '''
+    The broker where this lot was originally acquired. 
     For trade-originated lots: must equal source_trade.broker_id; validated at insert time.
-    For CA-originated lots: inherited from parent lot at CA processing time and stored directly as a fact.']
-  instrument_id     integer [not null, ref: > instrument.id, note: 'Instrument this lot belongs to.
+    For CA-originated lots: inherited from parent lot at CA processing time and stored directly as a fact.
+    ''']
+  instrument_id     integer [not null, ref: > instrument.id, note: '''
+    Instrument this lot belongs to.
     FIFO is per instrument (ISIN).
     For trade-originated lots: must equal source_trade_id->listing_id->instrument_id.
-    Backend validates this at insert time.']
-  listing_id        integer [not null, ref: > listing.id, note: 'The listing where this lot was acquired.
+    Backend validates this at insert time.
+    ''']
+  listing_id        integer [not null, ref: > listing.id, note: '''
+    The listing where this lot was acquired.
     For trade-originated lots: must equal source_trade_id->listing_id.
     For CA-originated lots: inherited from parent_lot and stored directly as fact.
-    Backend validates this at insert time.']
+    Backend validates this at insert time.
+    ''']
   source_trade_id   integer [ref: > trade.id, note: 'Non-NULL for trade-originated lots.  BUY trade only.']
   source_ca_id      integer [ref: > corporate_action.id, note: 'Non-NULL for corporate-action-originated lots.']
-  parent_lot_id integer [ref: > lot.id, note: 'NULL for trade-originated lots. 
+  parent_lot_id integer [ref: > lot.id, note: '''
+    NULL for trade-originated lots. 
   For CA-originated lots: the lot from which this lot was directly derived. 
   Used for audit trail only. Belgian CGT pre-2026 detection uses 
-  tax_snapshot_2025 at instrument level, not lot lineage traversal.']
+  tax_snapshot_2025 at instrument level, not lot lineage traversal.
+  ''']
 
   qty_at_acquisition text   [not null, note: 'Decimal string; Units as credited by the broker at lot creation. For trade-originated lots: the exact quantity on the broker trade confirmation; must equal source_trade.quantity; validated at insert time. For CA-originated lots: the exact quantity credited by the broker after the corporate action, including any broker-applied rounding.']
 
-  price_currency_code text [not null, ref: > currency.code, note: 'Currency that price_per_unit is denominated in. 
+  price_currency_code text [not null, ref: > currency.code, note: '''
+    Currency that price_per_unit is denominated in. 
 For trade-originated lots: equals source_trade → trade.listing_id → listing.currency_code at execution time; validated at insert time.
 For CA-originated lots: inherited from parent lot at CA processing time and stored as an immutable fact.
-Stored directly on the lot to avoid recursive parent_lot_id traversal at query time.']
+Stored directly on the lot to avoid recursive parent_lot_id traversal at query time.
+''']
   price_per_unit    text    [not null, note: 'Decimal string; Cost basis per unit. For trade-originated lots: must equal source_trade.price; validated at insert time. For CA-originated lots: computed once from parent lot cost basis and CA cost allocation rules at processing time, then stored as an immutable fact.']
 
 indexes {
-  (instrument_id, id) [note: 'Composite index for FIFO ordering per instrument. 
-    Ordered by acquisition_date ASC, lot.id ASC where acquisition_date is trade.executed_at for trade-originated lots and corporate_action.effective_date for CA-originated lots. lot.id provides stable tie-breaking when two lots share the same acquisition_date.']
+  (instrument_id, id) [note: '''
+    Composite index for FIFO ordering per instrument. 
+    Ordered by acquisition_date ASC, lot.id ASC where acquisition_date is trade.executed_at for trade-originated lots and corporate_action.effective_date for CA-originated lots. lot.id provides stable tie-breaking when two lots share the same acquisition_date.
+    ''']
 }
 
 note: '''
@@ -732,8 +752,7 @@ Table lot_transfer {
   notes           text
 
 indexes {
-  (lot_id, transferred_at) [note: 'Current broker derivation per lot: 
-    WHERE lot_id = ? ORDER BY transferred_at DESC LIMIT 1']
+  (lot_id, transferred_at) [note: 'Current broker derivation per lot: WHERE lot_id = ? ORDER BY transferred_at DESC LIMIT 1']
 }
 
 note: '''
