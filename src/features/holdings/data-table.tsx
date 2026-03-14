@@ -9,6 +9,7 @@ import {
 	type VisibilityState,
 } from "@tanstack/react-table";
 import { Settings2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -33,32 +34,31 @@ interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
 	data: TData[];
 	meta?: TableMeta<TData>;
-	sorting: SortingState;
-	onSortingChange: (
-		updater: SortingState | ((prev: SortingState) => SortingState),
-	) => void;
-	columnVisibility: VisibilityState;
-	onColumnVisibilityChange: (
-		updater: VisibilityState | ((prev: VisibilityState) => VisibilityState),
-	) => void;
 }
 
 export function DataTable<TData, TValue>({
 	columns,
 	data,
 	meta,
-	columnVisibility,
-	onColumnVisibilityChange,
-	sorting,
-	onSortingChange,
 }: DataTableProps<TData, TValue>) {
+	const [sorting, setSorting] = useState<SortingState>([]);
+	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+		() =>
+			columns.reduce((acc, col) => {
+				const id = col.id ?? (col as any).accessorKey;
+				if (id && col.meta?.hideByDefault) {
+					acc[id] = false;
+				}
+				return acc;
+			}, {} as VisibilityState),
+	);
 	const table = useReactTable({
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
-		onSortingChange,
-		onColumnVisibilityChange,
+		onSortingChange: setSorting,
+		onColumnVisibilityChange: setColumnVisibility,
 		state: { sorting, columnVisibility },
 		meta,
 	});

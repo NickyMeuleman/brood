@@ -20,15 +20,12 @@ import {
 import { Switch } from "@/components/ui/switch.tsx";
 import { cn, formatCurrency, formatPercentage } from "@/lib/utils.ts";
 import { commands } from "../../bindings.ts";
-import { createColumns } from "./columns.tsx";
+import { columns, normalizeHolding } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
 // Derive the initial column visibility from the column definitions once.
-// `createColumns` always produces the same column shape regardless of the
-// `includeFees` flag — only accessor functions differ — so reading
-// hideByDefault off a single call is sufficient and stable across toggles.
 function initialColumnVisibility(): VisibilityState {
-	return createColumns(true).reduce((acc, col) => {
+	return columns.reduce((acc, col) => {
 		const id = col.id ?? (col as any).accessorKey;
 		if (id && col.meta?.hideByDefault) {
 			acc[id] = false;
@@ -54,12 +51,8 @@ const HoldingsPage = () => {
 		},
 	});
 
-	const columns = useMemo(() => createColumns(includeFees), [includeFees]);
-	// Workaround for tanstack table using stale cache values
-	// Memoize the data array so it gets a new reference when fees toggle
-	// biome-ignore lint/correctness/useExhaustiveDependencies: force update on fee change
 	const tableData = useMemo(
-		() => (data?.holdings ? [...data.holdings] : []),
+		() => data?.holdings.map((h) => normalizeHolding(h, includeFees)) ?? [],
 		[data?.holdings, includeFees],
 	);
 
