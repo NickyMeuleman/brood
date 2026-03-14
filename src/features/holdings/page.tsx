@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { SortingState, VisibilityState } from "@tanstack/react-table";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -22,8 +23,28 @@ import { commands } from "../../bindings.ts";
 import { createColumns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
+// Derive the initial column visibility from the column definitions once.
+// `createColumns` always produces the same column shape regardless of the
+// `includeFees` flag — only accessor functions differ — so reading
+// hideByDefault off a single call is sufficient and stable across toggles.
+function initialColumnVisibility(): VisibilityState {
+	return createColumns(true).reduce((acc, col) => {
+		const id = col.id ?? (col as any).accessorKey;
+		if (id && col.meta?.hideByDefault) {
+			acc[id] = false;
+		}
+		return acc;
+	}, {} as VisibilityState);
+}
+
 const HoldingsPage = () => {
 	const [includeFees, setIncludeFees] = useState(true);
+
+	const [sorting, setSorting] = useState<SortingState>([]);
+	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+		initialColumnVisibility,
+	);
+
 	const { data } = useQuery({
 		queryKey: ["holdings"],
 		queryFn: async () => {
@@ -34,6 +55,13 @@ const HoldingsPage = () => {
 	});
 
 	const columns = useMemo(() => createColumns(includeFees), [includeFees]);
+	// Workaround for tanstack table using stale cache values
+	// Memoize the data array so it gets a new reference when fees toggle
+	// biome-ignore lint/correctness/useExhaustiveDependencies: force update on fee change
+	const tableData = useMemo(
+		() => (data?.holdings ? [...data.holdings] : []),
+		[data?.holdings, includeFees],
+	);
 
 	const total_eur = Number(data?.totals.market_value_eur) ?? 0;
 
@@ -103,11 +131,13 @@ const HoldingsPage = () => {
 			</div>
 			{data ? (
 				<DataTable
-					/* needed to trigger update on fee toggle  */
-					key={includeFees ? "with-fees" : "without-fees"}
 					columns={columns}
-					data={data.holdings}
+					data={tableData}
 					meta={{ totals: data.totals }}
+					sorting={sorting}
+					onSortingChange={setSorting}
+					columnVisibility={columnVisibility}
+					onColumnVisibilityChange={setColumnVisibility}
 				/>
 			) : (
 				"Loading"

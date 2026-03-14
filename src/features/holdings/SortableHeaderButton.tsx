@@ -5,15 +5,14 @@ import { cn } from "@/lib/utils";
 
 export const SortableHeaderButton = <TData, TValue>({
 	className,
-	label,
 	column,
 	align = "start",
 }: {
 	className?: string;
-	label: string;
 	column: Column<TData, TValue>;
 	align?: "start" | "end";
 }) => {
+	const label = column.columnDef.meta?.label ?? column.id;
 	return (
 		<div className={cn(align === "end" && "text-right")}>
 			<Button

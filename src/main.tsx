@@ -20,6 +20,10 @@ declare module "@tanstack/react-table" {
 	interface TableMeta<TData extends RowData> {
 		totals?: HoldingsTotals;
 	}
+	interface ColumnMeta<TData extends RowData, TValue> {
+		label?: string;
+    hideByDefault?: boolean;
+	}
 }
 
 const rootElement = document.getElementById("root") as HTMLElement;

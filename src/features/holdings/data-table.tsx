@@ -6,8 +6,19 @@ import {
 	type SortingState,
 	type TableMeta,
 	useReactTable,
+	type VisibilityState,
 } from "@tanstack/react-table";
-import { useState } from "react";
+import { Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	Table,
 	TableBody,
@@ -22,27 +33,89 @@ interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
 	data: TData[];
 	meta?: TableMeta<TData>;
+	sorting: SortingState;
+	onSortingChange: (
+		updater: SortingState | ((prev: SortingState) => SortingState),
+	) => void;
+	columnVisibility: VisibilityState;
+	onColumnVisibilityChange: (
+		updater: VisibilityState | ((prev: VisibilityState) => VisibilityState),
+	) => void;
 }
 
 export function DataTable<TData, TValue>({
 	columns,
 	data,
 	meta,
+	columnVisibility,
+	onColumnVisibilityChange,
+	sorting,
+	onSortingChange,
 }: DataTableProps<TData, TValue>) {
-	const [sorting, setSorting] = useState<SortingState>([]);
-
 	const table = useReactTable({
 		data,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
-		onSortingChange: setSorting,
-		state: { sorting },
-    meta
+		onSortingChange,
+		onColumnVisibilityChange,
+		state: { sorting, columnVisibility },
+		meta,
 	});
 
 	return (
-		<div>
+		<div className="flex flex-col gap-4">
+			<div>
+				<div className="flex items-center justify-between">
+					<div className="flex flex-1 items-center gap-2">filter input</div>
+					<div className="flex items-center gap-2">
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								render={
+									<Button
+										variant="outline"
+										size="sm"
+										className="ml-auto hidden h-8 lg:flex"
+									/>
+								}
+							>
+								<span className="sr-only">Open menu</span>
+								<Settings2 />
+								View
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-37.5">
+								<DropdownMenuGroup>
+									<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+									<DropdownMenuSeparator />
+									{table
+										.getAllColumns()
+										.filter(
+											(column) =>
+												typeof column.accessorFn !== "undefined" &&
+												column.getCanHide(),
+										)
+										.map((column) => {
+											const label = column.columnDef.meta?.label ?? column.id;
+
+											return (
+												<DropdownMenuCheckboxItem
+													key={column.id}
+													className="capitalize"
+													checked={column.getIsVisible()}
+													onCheckedChange={(value) =>
+														column.toggleVisibility(!!value)
+													}
+												>
+													{label}
+												</DropdownMenuCheckboxItem>
+											);
+										})}
+								</DropdownMenuGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				</div>
+			</div>
 			<div className="overflow-hidden rounded-md border">
 				<Table>
 					<TableHeader>

@@ -37,19 +37,18 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 
 	return [
 		columnHelper.accessor("ticker", {
-			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Ticker" />
-			),
+			meta: { label: "Ticker" },
+			header: ({ column }) => <SortableHeaderButton column={column} />,
 		}),
 		columnHelper.accessor("name", {
-			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Name" />
-			),
+			meta: { label: "Name", hideByDefault: true },
+			header: ({ column }) => <SortableHeaderButton column={column} />,
 		}),
 		columnHelper.accessor((row) => Number(row.market_value), {
 			id: "portfolio_weight",
+			meta: { label: "Weight" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Weight" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, table }) => {
 				const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
@@ -59,8 +58,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 			},
 		}),
 		columnHelper.accessor("quantity", {
+			meta: { label: "Quantity" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Quantity" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ getValue }) => {
 				const quantity = getValue();
@@ -69,8 +69,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		}),
 		columnHelper.accessor(accessorFuncs.costBasis, {
 			id: "cost_basis",
+			meta: { label: "Cost Basis" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Cost basis" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, getValue }) => {
 				const val = getValue();
@@ -80,8 +81,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		}),
 		columnHelper.accessor(accessorFuncs.paid, {
 			id: "paid",
+			meta: { label: "Paid" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Paid" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, getValue }) => {
 				const val = getValue();
@@ -98,12 +100,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 			},
 		}),
 		columnHelper.accessor("current_price", {
+			meta: { label: "Current Price" },
 			header: ({ column }) => (
-				<SortableHeaderButton
-					column={column}
-					label="Current Price"
-					align="end"
-				/>
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, getValue }) => {
 				const val = Number(getValue());
@@ -113,8 +112,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		}),
 		columnHelper.accessor((row) => Number(row.total_fees), {
 			id: "total_fees",
+			meta: { label: "Fees" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Fees" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, getValue }) => (
 				<div className="text-right font-medium">
@@ -132,8 +132,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		}),
 		columnHelper.accessor((row) => Number(row.fee_drag), {
 			id: "fee_drag",
+			meta: { label: "Fee Drag" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Fee drag" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			// Fee drag is always relative to total_cost (without fees)
 			// using total_cost_with_fees as denominator would be circular.
@@ -145,8 +146,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 			),
 		}),
 		columnHelper.accessor("market_value", {
+			meta: { label: "Total" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Total" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row }) => {
 				const val = parseFloat(row.getValue("market_value"));
@@ -166,8 +168,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		}),
 		columnHelper.accessor(accessorFuncs.unrealisedGain, {
 			id: "unrealised_gain",
+			meta: { label: "Profit/Loss" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="Profit/Loss" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ row, getValue }) => {
 				const val = Number(getValue());
@@ -207,8 +210,9 @@ export function createColumns(includeFees: boolean): ColumnDef<Holding>[] {
 		// % of bought value to add to bought value to get market_value
 		columnHelper.accessor(accessorFuncs.percentageGain, {
 			id: "percentage_gain",
+			meta: { label: "% Gain" },
 			header: ({ column }) => (
-				<SortableHeaderButton column={column} label="%" align="end" />
+				<SortableHeaderButton column={column} align="end" />
 			),
 			cell: ({ getValue }) => {
 				const val = Number(getValue());
