@@ -26,20 +26,17 @@ pub struct Holding {
     unrealised_gain: Decimal,
     unrealised_gain_with_fees: Decimal,
     total_fees: Decimal,
-    // Total amount paid for shares currently held
     total_cost: Decimal,
     total_cost_with_fees: Decimal,
-    // Fees paid as a fraction of acquisition cost.
-    // measures the drag at time of investing, independent of subsequent price movement.
-    // No _with_fees variant needed as fee drag is always fees / cost_without_fees.
-    // Using total_cost_with_fees as denominator would be circular.
+    // Fees paid as a fraction of acquisition cost (fees / total_cost).
+    // Measures drag at time of investing, independent of subsequent price movement.
+    // No _with_fees variant — using total_cost_with_fees as denominator would be circular.
     fee_drag: Decimal,
 
-    // EUR (= local currency values for EUR holdings)
-    // Converted at the current spot rate.
-    // TODO: values that are aggregated over time are approximations — a correct historical-rate value requires the FX rate
-    // at each lot's acquisition date, not the current spot rate. Acceptable for
-    // display; not suitable for tax reporting.
+    // EUR equivalents, (= local currency values for EUR holdings)
+    // TODO: time-aggregated values (avg_cost_basis_eur etc.) are approximations —
+    // correct values require the FX rate at each lot's acquisition date.
+    // Acceptable for display; not suitable for tax reporting.
     avg_cost_basis_eur: Decimal,
     avg_cost_basis_with_fees_eur: Decimal,
     market_value_eur: Decimal,
@@ -55,8 +52,7 @@ pub struct Holding {
     percentage_gain_with_fees: Decimal,
 }
 
-/// How much of the portfolio is held in a given currency,
-/// for the currency breakdown UI.
+/// How much of the portfolio is held in a given currency, for the currency breakdown UI.
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct CurrencyAllocation {
     currency_code: String,
@@ -67,10 +63,9 @@ pub struct CurrencyAllocation {
 }
 
 /// Portfolio-level aggregates in EUR.
-/// Sent in the response envelope so the frontend never has to
-/// reduce across rows — these are read directly by table footers
-/// and the portfolio_weight column via table meta.
-#[derive(Debug, Clone, Serialize, Type)]
+/// Sent in the response envelope so the frontend never has to reduce across rows —
+/// read directly by table footers and the portfolio_weight column via table meta.
+#[derive(Debug, Clone, Serialize, Type, Default)]
 pub struct HoldingsTotals {
     market_value_eur: Decimal,
     unrealised_gain_eur: Decimal,
@@ -96,13 +91,77 @@ struct TradeFeeRow {
     fee_amount: String,
 }
 
+struct AllLotRow {
+    lot_id: i64,
+    parent_lot_id: Option<i64>,
+    source_trade_id: Option<i64>,
+    qty: String,
+}
+
+fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
+    Decimal::from_str(s).map_err(|_| AppError::Database(format!("Malformed {ctx}: {s}")))
+}
+
+/// Computes the fee basis attributable to every lot at its full `qty_at_acquisition`.
+///
+/// Fees follow shares proportionally at every CA transformation:
+///
+/// - Trade lot:  `total_trade_fees × (lot_qty / trade_qty)`
+///   Handles partial fills where one trade produces multiple lots.
+///
+/// - CA lot:     `parent_fee_basis × (lot_qty / sum_of_sibling_qtys)`
+///   Propagates fees down the tree. Handles splits, spinoffs, and chains of
+///   arbitrary depth without ever needing to walk upward to the root.
+///
+/// Requires `all_lots` in topological order (parents before children).
+/// `ORDER BY id ASC` guarantees this because a lot is always inserted after its parent.
+fn compute_fee_basis(
+    all_lots: &[AllLotRow],
+    fee_by_trade: &HashMap<i64, (Decimal, Decimal)>,
+) -> Result<HashMap<i64, Decimal>, AppError> {
+    // Pass 1 — sum child qtys per parent for proportional distribution.
+    let mut sibling_total_qty: HashMap<i64, Decimal> = HashMap::new();
+    for lot in all_lots {
+        if let Some(parent_id) = lot.parent_lot_id {
+            let qty = parse_decimal(&lot.qty, "lot qty_at_acquisition")?;
+            *sibling_total_qty.entry(parent_id).or_default() += qty;
+        }
+    }
+
+    // Pass 2 — propagate fee basis downward from roots to leaves.
+    let mut fee_basis: HashMap<i64, Decimal> = HashMap::new();
+    for lot in all_lots {
+        let qty = parse_decimal(&lot.qty, "lot qty_at_acquisition")?;
+
+        let basis = match (lot.source_trade_id, lot.parent_lot_id) {
+            (Some(tid), _) => fee_by_trade
+                .get(&tid)
+                .map(|(trade_qty, fees)| fees * (qty / trade_qty))
+                .unwrap_or(Decimal::ZERO),
+
+            (None, Some(parent_id)) => {
+                let parent_basis = fee_basis.get(&parent_id).copied().unwrap_or(Decimal::ZERO);
+                let sibling_qty = sibling_total_qty[&parent_id];
+                parent_basis * (qty / sibling_qty)
+            }
+
+            (None, None) => Decimal::ZERO,
+        };
+
+        fee_basis.insert(lot.lot_id, basis);
+    }
+
+    Ok(fee_basis)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppError> {
-    // 1. All lots (open and closed) — needed to propagate fees through CA chains.
-    //    Ordered by id ASC, which is topological order: a lot is always inserted
-    //    after its parent, so parents are guaranteed to appear before children.
-    let all_lots = sqlx::query!(
+    // 1. All lots (open and closed) for fee propagation.
+    //    ORDER BY id ASC guarantees topological order — a lot is always inserted
+    //    after its parent, so parents always appear before children after sorting.
+    let all_lots = sqlx::query_as!(
+        AllLotRow,
         r#"
         SELECT
             id              AS "lot_id!",
@@ -188,9 +247,10 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
     let fx_map: HashMap<String, Decimal> = fx_rows
         .into_iter()
         .map(|r| {
-            let rate = Decimal::from_str(&r.rate_to_eur)
-                .map_err(|_| AppError::Database("Malformed fx_rate rate_to_eur".to_string()))?;
-            Ok((r.currency, rate))
+            Ok((
+                r.currency,
+                parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?,
+            ))
         })
         .collect::<Result<_, AppError>>()?;
 
@@ -209,70 +269,21 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
     //    storing it here avoids a separate trade lookup later.
     let mut fee_by_trade: HashMap<i64, (Decimal, Decimal)> = HashMap::new();
     for r in fee_rows {
-        let trade_qty = Decimal::from_str(&r.trade_qty)
-            .map_err(|_| AppError::Database("Malformed trade quantity".to_string()))?;
-        let fee = Decimal::from_str(&r.fee_amount)
-            .map_err(|_| AppError::Database("Malformed trade fee amount".to_string()))?;
+        let trade_qty = parse_decimal(&r.trade_qty, "trade quantity")?;
+        let fee = parse_decimal(&r.fee_amount, "trade fee amount")?;
         let entry = fee_by_trade
             .entry(r.trade_id)
             .or_insert((trade_qty, Decimal::ZERO));
         entry.1 += fee;
     }
 
-    // 7. Precompute fee_basis[lot_id]: fees attributable to each lot at full qty.
-    //
-    //    Fees follow shares proportionally at every event:
-    //
-    //      Trade lot   fees × (lot_qty / trade_qty)
-    //                  Handles partial fills — multiple lots from one trade each
-    //                  receive their proportional share.
-    //
-    //      CA lot      parent_fee_basis × (lot_qty / sum_of_sibling_qtys)
-    //                  Handles splits (1 child → ratio = 1), spinoffs (N children),
-    //                  and chains of arbitrary depth by propagating through the tree.
-    //
-    //    Requires topological order (parents before children) — guaranteed by
-    //    ORDER BY id ASC in query 1.
-
-    // First pass: sum child qtys per parent so we can prorate across siblings.
-    let mut sibling_total_qty: HashMap<i64, Decimal> = HashMap::new();
-    for lot in &all_lots {
-        if let Some(parent_id) = lot.parent_lot_id {
-            let qty = Decimal::from_str(&lot.qty)
-                .map_err(|_| AppError::Database("Malformed lot qty_at_acquisition".to_string()))?;
-            *sibling_total_qty.entry(parent_id).or_default() += qty;
-        }
-    }
-
-    // Second pass: walk from roots to leaves, propagating fees downward.
-    let mut fee_basis: HashMap<i64, Decimal> = HashMap::new();
-    for lot in &all_lots {
-        let qty = Decimal::from_str(&lot.qty)
-            .map_err(|_| AppError::Database("Malformed lot qty_at_acquisition".to_string()))?;
-
-        let basis = match (lot.source_trade_id, lot.parent_lot_id) {
-            (Some(tid), _) => fee_by_trade
-                .get(&tid)
-                .map(|(trade_qty, fees)| fees * (qty / trade_qty))
-                .unwrap_or(Decimal::ZERO),
-
-            (None, Some(parent_id)) => {
-                let parent_basis = fee_basis.get(&parent_id).copied().unwrap_or(Decimal::ZERO);
-                let sibling_qty = sibling_total_qty[&parent_id];
-                parent_basis * (qty / sibling_qty)
-            }
-
-            (None, None) => Decimal::ZERO,
-        };
-
-        fee_basis.insert(lot.lot_id, basis);
-    }
+    // 7. Propagate fee basis through the lot tree.
+    let fee_basis = compute_fee_basis(&all_lots, &fee_by_trade)?;
 
     // 8. Sum sold quantity per lot.  lot_id → total_sold_qty.
     let mut lot_sales: HashMap<i64, Decimal> = HashMap::new();
     for sale in sales {
-        let qty = Decimal::from_str(&sale.quantity)
-            .map_err(|_| AppError::Database("Malformed sell allocation quantity".to_string()))?;
+        let qty = parse_decimal(&sale.quantity, "sell allocation quantity")?;
         *lot_sales.entry(sale.origin_lot_id).or_default() += qty;
     }
 
@@ -295,8 +306,7 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
     let mut total_fees_by_listing: HashMap<i64, Decimal> = HashMap::new();
 
     for row in open_lots {
-        let initial = Decimal::from_str(&row.qty)
-            .map_err(|_| AppError::Database("Malformed lot qty_at_acquisition".to_string()))?;
+        let initial = parse_decimal(&row.qty, "lot qty_at_acquisition")?;
         let sold = lot_sales.get(&row.lot_id).copied().unwrap_or(Decimal::ZERO);
         let remaining = initial - sold;
 
@@ -304,10 +314,8 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
             continue;
         }
 
-        let lot_price = Decimal::from_str(&row.price)
-            .map_err(|_| AppError::Database("Malformed lot price_per_unit".to_string()))?;
+        let lot_price = parse_decimal(&row.price, "lot price_per_unit")?;
         let lot_cost = lot_price * remaining;
-
         let lot_fee = fee_basis
             .get(&row.lot_id)
             .map(|basis| basis * (remaining / initial))
@@ -375,62 +383,55 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
     let price_map: HashMap<i64, Decimal> = prices
         .into_iter()
         .map(|r| {
-            let price = Decimal::from_str(&r.close)
-                .map_err(|_| AppError::Database("Malformed price_history close".to_string()))?;
-            Ok((r.listing_id, price))
+            Ok((
+                r.listing_id,
+                parse_decimal(&r.close, "price_history close")?,
+            ))
         })
         .collect::<Result<_, AppError>>()?;
 
     // 11. Apply prices, compute gains, percentages, and EUR values.
     for (listing_id, holding) in holdings.iter_mut() {
-        if let Some(&price) = price_map.get(listing_id) {
-            let tc = total_costs[listing_id];
-            debug_assert!(tc != Decimal::ZERO);
-            let tcf = total_costs_with_fees[listing_id];
-            debug_assert!(tcf != Decimal::ZERO);
-            let tf = total_fees_by_listing[listing_id];
-            let market_value = price * holding.quantity;
-            let rate = eur_rate(&holding.currency_code)?;
+        let Some(&price) = price_map.get(listing_id) else {
+            continue;
+        };
 
-            holding.current_price = price;
-            holding.market_value = market_value;
-            holding.unrealised_gain = market_value - tc;
-            holding.unrealised_gain_with_fees = market_value - tcf;
-            holding.total_fees = tf;
-            // Divide by total_cost accumulator, not avg_cost_basis × quantity, to
-            // avoid reintroducing the precision loss from the avg_cost_basis division.
-            holding.percentage_gain = holding.unrealised_gain / tc;
-            holding.percentage_gain_with_fees = holding.unrealised_gain_with_fees / tcf;
+        let tc = total_costs[listing_id];
+        debug_assert!(tc != Decimal::ZERO);
+        let tcf = total_costs_with_fees[listing_id];
+        debug_assert!(tcf != Decimal::ZERO);
+        let tf = total_fees_by_listing[listing_id];
+        let market_value = price * holding.quantity;
+        let rate = eur_rate(&holding.currency_code)?;
 
-            holding.market_value_eur = market_value * rate;
-            holding.unrealised_gain_eur = holding.unrealised_gain * rate;
-            holding.unrealised_gain_with_fees_eur = holding.unrealised_gain_with_fees * rate;
-            holding.avg_cost_basis_eur = holding.avg_cost_basis * rate;
-            holding.avg_cost_basis_with_fees_eur = holding.avg_cost_basis_with_fees * rate;
-            holding.total_fees_eur = tf * rate;
-            holding.fee_drag = tf / tc;
-            holding.total_cost = tc;
-            holding.total_cost_with_fees = tcf;
-            holding.total_cost_eur = tc * rate;
-            holding.total_cost_with_fees_eur = tcf * rate;
-        }
+        holding.current_price = price;
+        holding.market_value = market_value;
+        holding.market_value_eur = market_value * rate;
+        holding.total_fees = tf;
+        holding.total_fees_eur = tf * rate;
+        holding.total_cost = tc;
+        holding.total_cost_eur = tc * rate;
+        holding.total_cost_with_fees = tcf;
+        holding.total_cost_with_fees_eur = tcf * rate;
+        holding.unrealised_gain = market_value - tc;
+        holding.unrealised_gain_eur = holding.unrealised_gain * rate;
+        holding.unrealised_gain_with_fees = market_value - tcf;
+        holding.unrealised_gain_with_fees_eur = holding.unrealised_gain_with_fees * rate;
+        // Divide by total_cost accumulator, not avg_cost_basis × quantity, to
+        // avoid reintroducing the precision loss from the avg_cost_basis division.
+        holding.percentage_gain = holding.unrealised_gain / tc;
+        holding.percentage_gain_with_fees = holding.unrealised_gain_with_fees / tcf;
+        holding.fee_drag = tf / tc;
+
+        holding.avg_cost_basis_eur = holding.avg_cost_basis * rate;
+        holding.avg_cost_basis_with_fees_eur = holding.avg_cost_basis_with_fees * rate;
     }
 
     // 12. Sort, then build response envelope with portfolio totals and currency breakdown.
     let mut holdings_vec: Vec<Holding> = holdings.into_values().collect();
     holdings_vec.sort_by(|a, b| a.ticker.cmp(&b.ticker));
 
-    let mut totals = HoldingsTotals {
-        market_value_eur: Decimal::ZERO,
-        unrealised_gain_eur: Decimal::ZERO,
-        unrealised_gain_with_fees_eur: Decimal::ZERO,
-        total_fees_eur: Decimal::ZERO,
-        percentage_gain: Decimal::ZERO,
-        percentage_gain_with_fees: Decimal::ZERO,
-        total_cost_eur: Decimal::ZERO,
-        total_cost_with_fees_eur: Decimal::ZERO,
-    };
-
+    let mut totals = HoldingsTotals::default();
     // currency_code → (market_value in that currency, market_value_eur)
     let mut currency_map: HashMap<String, (Decimal, Decimal)> = HashMap::new();
 
