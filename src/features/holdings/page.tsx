@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import type { SortingState, VisibilityState } from "@tanstack/react-table";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -23,24 +22,8 @@ import { commands } from "../../bindings.ts";
 import { columns, normalizeHolding } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
-// Derive the initial column visibility from the column definitions once.
-function initialColumnVisibility(): VisibilityState {
-	return columns.reduce((acc, col) => {
-		const id = col.id ?? (col as any).accessorKey;
-		if (id && col.meta?.hideByDefault) {
-			acc[id] = false;
-		}
-		return acc;
-	}, {} as VisibilityState);
-}
-
 const HoldingsPage = () => {
 	const [includeFees, setIncludeFees] = useState(true);
-
-	const [sorting, setSorting] = useState<SortingState>([]);
-	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-		initialColumnVisibility,
-	);
 
 	const { data } = useQuery({
 		queryKey: ["holdings"],
@@ -127,10 +110,6 @@ const HoldingsPage = () => {
 					columns={columns}
 					data={tableData}
 					meta={{ totals: data.totals }}
-					sorting={sorting}
-					onSortingChange={setSorting}
-					columnVisibility={columnVisibility}
-					onColumnVisibilityChange={setColumnVisibility}
 				/>
 			) : (
 				"Loading"
