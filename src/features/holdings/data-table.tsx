@@ -8,7 +8,7 @@ import {
 	useReactTable,
 	type VisibilityState,
 } from "@tanstack/react-table";
-import { Settings2 } from "lucide-react";
+import { ArrowLeftRightIcon, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,9 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
 	Table,
 	TableBody,
@@ -30,28 +33,38 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 
+export interface DisplayControls {
+	includeFees: boolean;
+	onIncludeFeesChange: (v: boolean) => void;
+	displayInEur: boolean;
+	onDisplayInEurChange: (v: boolean) => void;
+}
+
 interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
 	data: TData[];
 	meta?: TableMeta<TData>;
+	display: DisplayControls;
 }
 
 export function DataTable<TData, TValue>({
 	columns,
 	data,
 	meta,
+	display,
 }: DataTableProps<TData, TValue>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
 		() =>
 			columns.reduce((acc, col) => {
-				const id = col.id ?? (col as any).accessorKey;
+				const id = col.id ?? (col as { accessorKey?: string }).accessorKey;
 				if (id && col.meta?.hideByDefault) {
 					acc[id] = false;
 				}
 				return acc;
 			}, {} as VisibilityState),
 	);
+
 	const table = useReactTable({
 		data,
 		columns,
@@ -64,58 +77,89 @@ export function DataTable<TData, TValue>({
 	});
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div>
-				<div className="flex items-center justify-between">
-					<div className="flex flex-1 items-center gap-2">filter input</div>
-					<div className="flex items-center gap-2">
-						<DropdownMenu>
-							<DropdownMenuTrigger
-								render={
-									<Button
-										variant="outline"
-										size="sm"
-										className="ml-auto hidden h-8 lg:flex"
-									/>
-								}
-							>
-								<span className="sr-only">Open menu</span>
-								<Settings2 />
-								View
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-37.5">
-								<DropdownMenuGroup>
-									<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-									<DropdownMenuSeparator />
-									{table
-										.getAllColumns()
-										.filter(
-											(column) =>
-												typeof column.accessorFn !== "undefined" &&
-												column.getCanHide(),
-										)
-										.map((column) => {
-											const label = column.columnDef.meta?.label ?? column.id;
+		<div className="flex flex-col gap-3">
+			<div className="flex items-center justify-between gap-4">
+				<Input placeholder="Search name..." className="w-auto" />
 
-											return (
-												<DropdownMenuCheckboxItem
-													key={column.id}
-													className="capitalize"
-													checked={column.getIsVisible()}
-													onCheckedChange={(value) =>
-														column.toggleVisibility(!!value)
-													}
-												>
-													{label}
-												</DropdownMenuCheckboxItem>
-											);
-										})}
-								</DropdownMenuGroup>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				</div>
+				<FieldGroup className="flex flex-row justify-end">
+					<Field orientation="horizontal" className="w-auto">
+						<Switch
+							id="toolbar-fees-toggle"
+							checked={display.includeFees}
+							onCheckedChange={display.onIncludeFeesChange}
+						/>
+						<FieldLabel
+							htmlFor="toolbar-fees-toggle"
+							className="cursor-pointer select-none font-normal text-sm"
+						>
+							Fees
+						</FieldLabel>
+					</Field>
+					<Field orientation="horizontal" className="w-auto">
+						<Switch
+							id="toolbar-eur-toggle"
+							checked={display.displayInEur}
+							onCheckedChange={display.onDisplayInEurChange}
+						/>
+						<FieldLabel
+							htmlFor="toolbar-eur-toggle"
+							className="cursor-pointer select-none font-normal text-sm"
+						>
+							Display in €
+						</FieldLabel>
+					</Field>
+				</FieldGroup>
+
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						render={
+							<Button variant="outline" size="sm" className="h-8 gap-1.5" />
+						}
+					>
+						<span className="sr-only">Open menu</span>
+						<Settings2 className="h-4 w-4" />
+						<span className="hidden sm:inline">Columns</span>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-40">
+						<DropdownMenuGroup>
+							<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+							<DropdownMenuSeparator />
+							{table
+								.getAllColumns()
+								.filter(
+									(column) =>
+										typeof column.accessorFn !== "undefined" &&
+										column.getCanHide(),
+								)
+								.map((column) => {
+									const label = column.columnDef.meta?.label ?? column.id;
+
+									return (
+										<DropdownMenuCheckboxItem
+											key={column.id}
+											className="capitalize"
+											checked={column.getIsVisible()}
+											onCheckedChange={(value) =>
+												column.toggleVisibility(!!value)
+											}
+										>
+											{label}
+										</DropdownMenuCheckboxItem>
+									);
+								})}
+						</DropdownMenuGroup>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
+
+			{display.displayInEur && (
+				<p className="flex items-center gap-1.5 text-muted-foreground text-xs">
+					<ArrowLeftRightIcon className="h-3 w-3" />
+					Values converted from local currency using the latest stored FX rate.
+					Hover a converted value to see the original.
+				</p>
+			)}
+
 			<div className="overflow-hidden rounded-md border">
 				<Table>
 					<TableHeader>

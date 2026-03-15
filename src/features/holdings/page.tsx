@@ -24,6 +24,7 @@ import { DataTable } from "./data-table.tsx";
 
 const HoldingsPage = () => {
 	const [includeFees, setIncludeFees] = useState(true);
+	const [displayInEur, setDisplayInEur] = useState(false);
 
 	const { data } = useQuery({
 		queryKey: ["holdings"],
@@ -35,8 +36,11 @@ const HoldingsPage = () => {
 	});
 
 	const tableData = useMemo(
-		() => data?.holdings.map((h) => normalizeHolding(h, includeFees)) ?? [],
-		[data?.holdings, includeFees],
+		() =>
+			data?.holdings.map((h) =>
+				normalizeHolding(h, includeFees, displayInEur),
+			) ?? [],
+		[data?.holdings, includeFees, displayInEur],
 	);
 
 	const total_eur = Number(data?.totals.market_value_eur) ?? 0;
@@ -110,6 +114,12 @@ const HoldingsPage = () => {
 					columns={columns}
 					data={tableData}
 					meta={{ totals: data.totals }}
+					display={{
+						includeFees,
+						onIncludeFeesChange: setIncludeFees,
+						displayInEur,
+						onDisplayInEurChange: setDisplayInEur,
+					}}
 				/>
 			) : (
 				"Loading"

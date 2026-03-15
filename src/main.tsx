@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 import { routeTree } from "./routeTree.gen";
 import "@/styles/global.css";
 import type { RowData } from "@tanstack/react-table";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { HoldingsTotals } from "./bindings";
 
 const router = createRouter({ routeTree });
@@ -22,7 +23,7 @@ declare module "@tanstack/react-table" {
 	}
 	interface ColumnMeta<TData extends RowData, TValue> {
 		label?: string;
-    hideByDefault?: boolean;
+		hideByDefault?: boolean;
 	}
 }
 
@@ -32,7 +33,9 @@ if (!rootElement.innerHTML) {
 	root.render(
 		<StrictMode>
 			<QueryClientProvider client={queryClient}>
-				<RouterProvider router={router} />
+				<TooltipProvider>
+					<RouterProvider router={router} />
+				</TooltipProvider>
 			</QueryClientProvider>
 		</StrictMode>,
 	);
