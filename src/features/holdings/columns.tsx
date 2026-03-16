@@ -1,10 +1,5 @@
 import { type ColumnDef, createColumnHelper } from "@tanstack/react-table";
-import {
-	ArrowDownRight,
-	ArrowLeftRight,
-	ArrowUpRight,
-	MoreHorizontal,
-} from "lucide-react";
+import { ArrowLeftRight, MoreHorizontal } from "lucide-react";
 import type { Holding } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,10 +66,6 @@ export function normalizeHolding(
 		? h.unrealised_gain_with_fees_eur
 		: h.unrealised_gain_eur;
 
-	// current_price_eur: exact — inverts market_value_eur = price × qty × rate
-	const qty = Number(h.quantity);
-	const current_price_eur = qty > 0 ? Number(h.market_value_eur) / qty : 0;
-
 	return {
 		...h,
 		is_converted,
@@ -91,7 +82,7 @@ export function normalizeHolding(
 			? Number(unrealised_eur)
 			: Number(unrealised_local),
 		display_current_price: is_converted
-			? current_price_eur
+			? Number(h.current_price_eur)
 			: Number(h.current_price),
 		display_market_value: is_converted
 			? Number(h.market_value_eur)
@@ -348,22 +339,21 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
-		cell: ({ row, getValue }) => {
-			// const isPositive = row.original.display_unrealised_gain >= 0;
-			// const val = Number(getValue());
-			// const formatted = formatCurrency(val, row.original.currency_code);
-			// return (
-			// 	<div
-			// 		className={cn(
-			// 			"flex items-center justify-end font-medium",
-			// 			val > 0 ? "text-green-600" : "text-red-600",
-			// 		)}
-			// 	>
-			// 		<span>{val > 0 ? <ArrowUpRight /> : <ArrowDownRight />}</span>
-			// 		<span>{formatted}</span>
-			// 	</div>
-			// );
-			return "placehold";
+		cell: ({ row }) => {
+			return (
+				<MoneyCell
+					value={row.original.display_unrealised_gain}
+					currency={row.original.display_currency}
+					isConverted={row.original.is_converted}
+					originalValue={row.original.display_unrealised_gain_original}
+					originalCurrency={row.original.currency_code}
+					className={cn(
+						row.original.display_unrealised_gain >= 0
+							? "text-green-600"
+							: "text-red-600",
+					)}
+				/>
+			);
 		},
 		footer: ({ table }) => {
 			const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
@@ -400,7 +390,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 						val > 0 ? "text-green-600" : "text-red-600",
 					)}
 				>
-					<span>{formatted}</span>
+					{formatted}
 				</div>
 			);
 		},
