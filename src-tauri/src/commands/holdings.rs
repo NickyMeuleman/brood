@@ -28,10 +28,6 @@ pub struct Holding {
     total_fees: Decimal,
     total_cost: Decimal,
     total_cost_with_fees: Decimal,
-    // Fees paid as a fraction of acquisition cost (fees / total_cost).
-    // Measures drag at time of investing, independent of subsequent price movement.
-    // No _with_fees variant — using total_cost_with_fees as denominator would be circular.
-    fee_drag: Decimal,
 
     // EUR equivalents, (= local currency values for EUR holdings)
     // TODO: time-aggregated values (avg_cost_basis_eur etc.) are approximations —
@@ -39,6 +35,7 @@ pub struct Holding {
     // Acceptable for display; not suitable for tax reporting.
     avg_cost_basis_eur: Decimal,
     avg_cost_basis_with_fees_eur: Decimal,
+    current_price_eur: Decimal,
     market_value_eur: Decimal,
     unrealised_gain_eur: Decimal,
     unrealised_gain_with_fees_eur: Decimal,
@@ -50,6 +47,10 @@ pub struct Holding {
     // Mathematically equal to (current_price - avg_cost_basis) / avg_cost_basis, because quantity cancels out.
     percentage_gain: Decimal,
     percentage_gain_with_fees: Decimal,
+    // Fees paid as a fraction of acquisition cost (fees / total_cost).
+    // Measures drag at time of investing, independent of subsequent price movement.
+    // No _with_fees variant — using total_cost_with_fees as denominator would be circular.
+    fee_drag: Decimal,
 }
 
 /// How much of the portfolio is held in a given currency, for the currency breakdown UI.
@@ -75,6 +76,7 @@ pub struct HoldingsTotals {
     percentage_gain_with_fees: Decimal,
     total_cost_eur: Decimal,
     total_cost_with_fees_eur: Decimal,
+    fee_drag: Decimal,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -330,25 +332,26 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
             currency_code: row.currency,
             quantity: Decimal::ZERO,
             avg_cost_basis: Decimal::ZERO,
-            avg_cost_basis_with_fees: Decimal::ZERO,
-            current_price: Decimal::ZERO,
-            market_value: Decimal::ZERO,
-            unrealised_gain: Decimal::ZERO,
-            unrealised_gain_with_fees: Decimal::ZERO,
-            total_fees: Decimal::ZERO,
-            total_cost: Decimal::ZERO,
-            total_cost_with_fees: Decimal::ZERO,
-            fee_drag: Decimal::ZERO,
             avg_cost_basis_eur: Decimal::ZERO,
+            avg_cost_basis_with_fees: Decimal::ZERO,
             avg_cost_basis_with_fees_eur: Decimal::ZERO,
+            current_price: Decimal::ZERO,
+            current_price_eur: Decimal::ZERO,
+            market_value: Decimal::ZERO,
             market_value_eur: Decimal::ZERO,
+            unrealised_gain: Decimal::ZERO,
             unrealised_gain_eur: Decimal::ZERO,
+            unrealised_gain_with_fees: Decimal::ZERO,
             unrealised_gain_with_fees_eur: Decimal::ZERO,
+            total_fees: Decimal::ZERO,
             total_fees_eur: Decimal::ZERO,
+            total_cost: Decimal::ZERO,
             total_cost_eur: Decimal::ZERO,
+            total_cost_with_fees: Decimal::ZERO,
             total_cost_with_fees_eur: Decimal::ZERO,
             percentage_gain: Decimal::ZERO,
             percentage_gain_with_fees: Decimal::ZERO,
+            fee_drag: Decimal::ZERO,
         });
 
         holding.quantity += remaining;
@@ -405,6 +408,7 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
         let rate = eur_rate(&holding.currency_code)?;
 
         holding.current_price = price;
+        holding.current_price_eur = price * rate;
         holding.market_value = market_value;
         holding.market_value_eur = market_value * rate;
         holding.total_fees = tf;
@@ -452,6 +456,7 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<HoldingsResponse, AppErro
     totals.percentage_gain = totals.unrealised_gain_eur / totals.total_cost_eur;
     totals.percentage_gain_with_fees =
         totals.unrealised_gain_with_fees_eur / totals.total_cost_with_fees_eur;
+    totals.fee_drag = totals.total_fees_eur / totals.total_cost_eur;
 
     let total_mv_eur = totals.market_value_eur;
     let mut currency_breakdown: Vec<CurrencyAllocation> = currency_map
