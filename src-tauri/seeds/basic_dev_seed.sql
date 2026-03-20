@@ -941,23 +941,350 @@ VALUES
   (
     4,
     1,
-    '2026-05-01',
+    '2026-03-01',
     '112.00',
     'EXCHANGE'
   ), -- SWRD recent
   (
     5,
     2,
-    '2026-05-01',
+    '2026-03-01',
     '41.00',
     'EXCHANGE'
   ), -- WEBN recent
   (
     6,
     3,
-    '2026-05-01',
+    '2026-03-01',
     '21.50',
     'EXCHANGE'
   );
 
 -- IMIE recent (post-split units)
+---
+-- ============================================================
+-- APPLE INC. (AAPL / XNAS / USD)
+-- Adds a USD-denominated stock to exercise the EUR toggle.
+--
+-- New IDs introduced:
+--   currency:        USD
+--   instrument:      4  (Apple Inc., US0378331005)
+--   listing:         4  (XNAS / AAPL / USD)
+--   cash:            2  (Re=bel USD account)
+--   broker_order:    9  (MARKET BUY 3 AAPL, 2024-06-10)
+--   trade:           10 (fill of order 9)
+--   trade_fee:       18 (TOB €1.88), 19 (BROKER €1.00)
+--   lot:             12 (3 AAPL @ $194.00)
+--   cash_transaction:10 (USD settlement debit)
+--   fx_rate:          1, 2, 3 (USD on 2024-06-10, 2025-12-31, 2026-03-05)
+--   price_history:    7 (AAPL 2025-12-31), 8 (AAPL 2026-03-05)
+--   tax_snapshot_2025:4 (AAPL @ Re=bel)
+--
+-- FX rates (ECB, 1 USD in EUR):
+--   2024-06-10  0.9217   EUR/USD ≈ 1.0849 at acquisition
+--   2025-12-31  0.9662   EUR/USD ≈ 1.0350 at year-end snapshot
+--   2026-03-05  0.9150   EUR/USD ≈ 1.0929 recent (used by EUR toggle)
+--
+-- Prices (EXCHANGE):
+--   2025-12-31  $248.00  (matches broker snapshot; pre-tariff)
+--   2026-03-05  $230.00  (recent; post-tariff drawdown)
+--
+-- Cost basis checks:
+--   lot 12:  3 × $194.00 = $582.00 total cost in USD
+--   TOB:     $582.00 × 0.9217 = €536.43 notional EUR
+--            €536.43 × 0.0035 = €1.877 → rounded to €1.88 (broker-charged)
+--   hist_cost_per_unit_eur = $194.00 × 0.9217 = €178.81
+--   snap_price_per_unit_eur = $248.00 × 0.9662 = €239.62
+-- ============================================================
+-- ============================================================
+-- Currency
+-- ============================================================
+INSERT INTO
+  currency (code)
+VALUES
+  ('USD');
+
+-- ============================================================
+-- Instrument
+-- ============================================================
+INSERT INTO
+  instrument (
+    id,
+    isin,
+    name,
+    issuer,
+    instrument_type,
+    replication,
+    fsma_registered,
+    accumulating,
+    domicile,
+    subject_to_cgt
+  )
+VALUES
+  (
+    4,
+    'US0378331005',
+    'Apple Inc.',
+    'Apple',
+    'STOCK',
+    NULL, -- replication is ETF/FUND concept only
+    0, -- not FSMA-registered
+    1, -- no distributing/accumulating distinction for stocks; set to 1
+    'US',
+    1
+  );
+
+-- ============================================================
+-- Listing  (NASDAQ)
+-- ============================================================
+INSERT INTO
+  listing (
+    id,
+    instrument_id,
+    exchange_mic,
+    ticker,
+    currency_code
+  )
+VALUES
+  (
+    4,
+    4,
+    'XNAS',
+    'AAPL',
+    'USD'
+  );
+
+-- ============================================================
+-- USD cash account at Re=bel
+-- ============================================================
+INSERT INTO
+  cash (
+    id,
+    broker_id,
+    currency_code
+  )
+VALUES
+  (2, 1, 'USD');
+
+-- ============================================================
+-- FX rates  (ECB; 1 USD expressed in EUR)
+-- ============================================================
+INSERT INTO
+  fx_rate (
+    id,
+    date,
+    currency,
+    rate_to_eur,
+    source
+  )
+VALUES
+  (
+    1,
+    '2024-06-10',
+    'USD',
+    '0.9217',
+    'ECB'
+  ), -- acquisition date
+  (
+    2,
+    '2025-12-31',
+    'USD',
+    '0.9662',
+    'ECB'
+  ), -- year-end snapshot
+  (
+    3,
+    '2026-03-05',
+    'USD',
+    '0.9150',
+    'ECB'
+  );
+
+-- recent; used by EUR toggle
+-- ============================================================
+-- Broker order
+-- ============================================================
+INSERT INTO
+  broker_order (
+    id,
+    listing_id,
+    broker_id,
+    order_type,
+    side,
+    requested_quantity,
+    limit_price,
+    placed_at
+  )
+VALUES
+  (
+    9,
+    4,
+    1,
+    'MARKET',
+    'BUY',
+    '3',
+    NULL,
+    '2024-06-10T14:28:00Z'
+  );
+
+-- ============================================================
+-- Trade
+-- ============================================================
+INSERT INTO
+  trade (
+    id,
+    broker_order_id,
+    listing_id,
+    broker_id,
+    side,
+    quantity,
+    price,
+    executed_at,
+    settlement_cash_id,
+    settlement_date
+  )
+VALUES
+  (
+    10,
+    9,
+    4,
+    1,
+    'BUY',
+    '3',
+    '194.00',
+    '2024-06-10T14:30:00Z',
+    2,
+    '2024-06-12'
+    --                          ^ USD cash account; AAPL settles T+1 in USD
+  );
+
+-- Trade 10: AAPL at Re=bel
+-- TOB:    3 × $194.00 × 0.0035 = $2.04 USD  (stamp duty in listing currency)
+-- BROKER: €1.00 EUR                          (commission always EUR)
+INSERT INTO
+  trade_fee (
+    id,
+    trade_id,
+    fee_type,
+    amount,
+    currency_code
+  )
+VALUES
+  (
+    18,
+    10,
+    'TOB',
+    '2.04',
+    'USD'
+  ),
+  (
+    19,
+    10,
+    'BROKER',
+    '1.00',
+    'EUR'
+  );
+
+-- ============================================================
+-- Lot
+-- ============================================================
+INSERT INTO
+  lot (
+    id,
+    broker_id_at_acquisition,
+    instrument_id,
+    listing_id,
+    source_trade_id,
+    qty_at_acquisition,
+    price_currency_code,
+    price_per_unit
+  )
+VALUES
+  (
+    12,
+    1,
+    4,
+    4,
+    10,
+    '3',
+    'USD',
+    '194.00'
+  );
+
+-- ============================================================
+-- Cash transaction  (USD settlement debit)
+-- amount = 3 × $194.00 = $582.00
+-- ============================================================
+INSERT INTO
+  cash_transaction (
+    id,
+    cash_id,
+    direction,
+    amount,
+    transacted_at,
+    category,
+    trade_id
+  )
+VALUES
+  (
+    10,
+    2,
+    'DEBIT',
+    '582.00',
+    '2024-06-12T00:00:00Z',
+    'TRADE',
+    10
+  );
+
+-- ============================================================
+-- Price history
+-- ============================================================
+INSERT INTO
+  price_history (
+    id,
+    listing_id,
+    date,
+    close,
+    source
+  )
+VALUES
+  (
+    7,
+    4,
+    '2025-12-31',
+    '248.00',
+    'EXCHANGE'
+  ), -- year-end; drives snap_price check
+  (
+    8,
+    4,
+    '2026-03-05',
+    '230.00',
+    'EXCHANGE'
+  );
+
+-- recent; MAX(date) for holdings view
+-- ============================================================
+-- Tax snapshot 2025  (as if received from Re=bel statement)
+-- All values in USD-acquisition / EUR-converted figures.
+--   hist_cost_per_unit_eur = $194.00 × 0.9217 = 178.81
+--   snap_price_per_unit_eur = $248.00 × 0.9662 = 239.62
+-- ============================================================
+INSERT INTO
+  tax_snapshot_2025 (
+    id,
+    instrument_id,
+    broker_id,
+    qty_at_snapshot,
+    hist_cost_per_unit_eur,
+    snap_price_per_unit_eur
+  )
+VALUES
+  (
+    4,
+    4,
+    1,
+    '3',
+    '178.81',
+    '239.62'
+  );
