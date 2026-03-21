@@ -1,8 +1,7 @@
 use crate::db::types::InstrumentType;
 use crate::db::Db;
 use crate::AppError;
-use chrono::{NaiveDate, Utc};
-use itertools::Itertools;
+use chrono::{NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use specta::Type;
@@ -28,6 +27,9 @@ struct Holding {
     currency_code: String,
     unit_price: Decimal,
     unit_price_basis: Decimal,
+    total_cost: Decimal,
+    /// total EUR cost that takes into account historical FX rates
+    total_cost_eur: Decimal,
 }
 
 /// sent to frontend, includes all derived values
@@ -42,15 +44,43 @@ struct EnvelopeHolding {
     quantity: Decimal,
     currency_code: String,
     unit_price: Decimal,
+    /// uses current FX rate
+    unit_price_eur: Decimal,
     unit_price_basis: Decimal,
+    /// uses historical FX rates
+    unit_price_basis_eur: Decimal,
     market_value: Decimal,
+    /// uses current FX rate
+    market_value_eur: Decimal,
     unrealised_gain: Decimal,
+    /// uses historical FX rates
+    unrealised_gain_eur: Decimal,
     pct_gain: Decimal,
+    /// uses historical FX rates
+    pct_gain_eur: Decimal,
+    total_cost: Decimal,
+    /// uses historical FX rates
+    total_cost_eur: Decimal,
+}
+
+/// Portfolio-level EUR aggregates. Read directly by table footers.
+#[derive(Debug, Clone, Serialize, Type, Default)]
+pub struct Totals {
+    market_value_eur: Decimal,
+    unrealised_gain_eur: Decimal,
+    unrealised_gain_fees_eur: Decimal,
+    total_fees_eur: Decimal,
+    pct_gain: Decimal,
+    pct_gain_fees: Decimal,
+    total_cost_eur: Decimal,
+    total_cost_fees_eur: Decimal,
+    fee_drag: Decimal,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct Envelope {
     holdings: Vec<EnvelopeHolding>,
+    totals: Totals,
 }
 
 async fn get_rate(
@@ -117,6 +147,57 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
     .await
     .map_err(AppError::from)?;
 
+    // all lots, needed because some open lots (CA-originated lots) lack info about the time of the
+    // price_per_unit at original acquisition time.
+    // This info is needed to build a historically correct unit_price_basis_eur
+    // that uses FX rates of each moment that lot's shares were bought
+    let all_lots = sqlx::query!(
+        r#"
+    SELECT
+        l.id,
+        l.parent_lot_id,
+        l.source_trade_id,
+        t.executed_at AS "executed_at: NaiveDateTime"  -- NULL for CA lots
+    FROM lot l
+    LEFT JOIN trade t ON t.id = l.source_trade_id
+    ORDER BY l.id ASC
+    "#
+    )
+    .fetch_all(&db.pool)
+    .await
+    .map_err(AppError::from)?;
+
+    // lot_id -> original_acquisition_date
+    let mut acquisition_dates: HashMap<i64, NaiveDate> = HashMap::new();
+    for r in all_lots {
+        let date = match (r.source_trade_id, r.parent_lot_id) {
+            (Some(_), _) => {
+                // Trade lot: use the trade's executed_at directly
+                let timestamp = r.executed_at.ok_or_else(|| {
+                    AppError::Database(format!("Trade lot {} has no executed_at", r.id))
+                })?;
+                timestamp.date()
+            }
+            (None, Some(parent_id)) => {
+                // CA lot: inherit the date from the parent, which was already processed
+                // (topological order guarantees parent comes first)
+                *acquisition_dates.get(&parent_id).ok_or_else(|| {
+                    AppError::Database(format!(
+                        "CA lot {} tried to reference unprocessed parent {}",
+                        r.id, parent_id
+                    ))
+                })?
+            }
+            (None, None) => {
+                return Err(AppError::Database(format!(
+                    "Lot {} has neither source_trade_id nor parent_lot_id",
+                    r.id
+                )))
+            }
+        };
+        acquisition_dates.insert(r.id, date);
+    }
+
     let mut sales = HashMap::new();
     for r in sqlx::query!(
         r#"
@@ -158,10 +239,32 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
     })
     .collect::<Result<_, AppError>>()?;
 
-    let mut holdings = HashMap::new();
-    // listing_id -> sum_of_remaining_costs
-    let mut total_costs: HashMap<i64, Decimal> = HashMap::new();
+    // currency_code -> rate_to_eur
+    let latest_rates: HashMap<String, Decimal> = sqlx::query!(
+        r#"
+        SELECT currency, rate_to_eur
+        FROM (
+            SELECT
+                currency,
+                rate_to_eur,
+                ROW_NUMBER() OVER (PARTITION BY currency ORDER BY date DESC) as rn
+            FROM fx_rate
+            WHERE date <= ?1
+        )
+        WHERE rn = 1
+        "#,
+        today
+    )
+    .fetch_all(&db.pool)
+    .await?
+    .into_iter()
+    .map(|r| {
+        let rate = parse_decimal(&r.rate_to_eur, "fx_rate price_to_eur")?;
+        Ok((r.currency, rate))
+    })
+    .collect::<Result<_, AppError>>()?;
 
+    let mut holdings = HashMap::new();
     for lot in open_lots {
         let initial = parse_decimal(&lot.qty_at_acquisition, "qty at acquisition")?;
         let sold = sales.get(&lot.id).copied().unwrap_or(Decimal::ZERO);
@@ -171,15 +274,12 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
         }
 
         let listing_id = lot.listing_id;
-        let unit_price = parse_decimal(&lot.price_per_unit, "lot price per unit")?;
-        let cost = unit_price * remaining;
-        *total_costs.entry(lot.listing_id).or_default() += cost;
 
         // or_insert: identity fields are identical for all lots of the same listing,
         // so taking them from the first lot encountered is correct.
         let holding = holdings.entry(listing_id).or_insert(Holding {
             listing_id,
-            currency_code: lot.currency_code,
+            currency_code: lot.currency_code.clone(),
             exchange_mic: lot.exchange_mic,
             ticker: lot.ticker,
             name: lot.name,
@@ -188,30 +288,59 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
             quantity: Decimal::ZERO,
             unit_price: Decimal::ZERO,
             unit_price_basis: Decimal::ZERO,
+            total_cost: Decimal::ZERO,
+            total_cost_eur: Decimal::ZERO,
         });
+        // price_per_unit is always correct, even for CA-originated lots because it is recalculated
+        // at CA time (old lot is closed, new lot with adjusted price is added)
+        let unit_price = parse_decimal(&lot.price_per_unit, "lot price per unit")?;
+        let cost = unit_price * remaining;
+        holding.total_cost += cost;
+
+        //  acquisition_dates holds all lots, this open lot has to be in it
+        let acquisition_date = acquisition_dates[&lot.id];
+        let rate = get_rate(&db.pool, &lot.currency_code, acquisition_date).await?;
+        let cost_eur = cost * rate;
+        holding.total_cost_eur += cost_eur;
+
         holding.quantity += remaining;
     }
 
     for (listing_id, h) in holdings.iter_mut() {
         if let Some(&price) = latest_prices.get(listing_id) {
             h.unit_price = price;
+        } else {
+            return Err(AppError::Internal);
         }
-        if let Some(&cost) = total_costs.get(listing_id) {
-            h.unit_price_basis = cost / h.quantity;
-        }
+        h.unit_price_basis = h.total_cost / h.quantity;
     }
 
-    let envelope_holdings = holdings
+    let mut envelope_holdings: Vec<EnvelopeHolding> = holdings
         .into_values()
         .map(|h| {
-            // always present: populated alongside holdings
-            let total_cost = total_costs[&h.listing_id];
+            let rate = if h.currency_code == "EUR" {
+                Ok(Decimal::ONE)
+            } else {
+                latest_rates.get(&h.currency_code).copied().ok_or_else(|| {
+                    AppError::Database(format!("No FX rate for {}", h.currency_code))
+                })
+            }?;
             let market_value = h.quantity * h.unit_price;
-            let unrealised_gain = market_value - total_cost;
-            let pct_gain = unrealised_gain / total_cost;
+            let market_value_eur = market_value * rate;
+            let unrealised_gain = market_value - h.total_cost;
+            // INFO: unrealised_gain_eur is not the same as unrealised_gain * rate
+            // Cost side uses historical acquisition rates; market side uses today's rate.
+            // The difference captures both price appreciation and FX movement since purchase.
+            let unrealised_gain_eur = market_value_eur - h.total_cost_eur;
+            // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
+            // historical FX rates are used instead of the latest one
+            let unit_price_basis_eur = h.total_cost_eur / h.quantity;
+            let pct_gain = unrealised_gain / h.total_cost;
+            // INFO: pct_gain_eur is not the same as pct_gain
+            // historical FX rates are used instead of the latest one
+            let pct_gain_eur = unrealised_gain_eur / h.total_cost_eur;
 
-            EnvelopeHolding {
-                unit_price_basis: h.unit_price_basis,
+            Ok(EnvelopeHolding {
                 listing_id: h.listing_id,
                 ticker: h.ticker,
                 exchange_mic: h.exchange_mic,
@@ -219,17 +348,38 @@ pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
                 quantity: h.quantity,
                 currency_code: h.currency_code,
                 unit_price: h.unit_price,
+                unit_price_eur: h.unit_price * rate,
+                unit_price_basis: h.unit_price_basis,
+                unit_price_basis_eur,
                 isin: h.isin,
                 name: h.name,
+                total_cost: h.total_cost,
+                total_cost_eur: h.total_cost_eur,
                 market_value,
+                market_value_eur,
                 unrealised_gain,
+                unrealised_gain_eur,
                 pct_gain,
-            }
+                pct_gain_eur,
+            })
         })
-        .sorted_unstable_by(|a, b| a.ticker.cmp(&b.ticker))
-        .collect();
+        .collect::<Result<_, AppError>>()?;
+    envelope_holdings.sort_unstable_by(|a, b| a.ticker.cmp(&b.ticker));
+
+    let mut totals = Totals::default();
+    for h in &envelope_holdings {
+        totals.market_value_eur += h.market_value_eur;
+        totals.unrealised_gain_eur += h.unrealised_gain_eur;
+        totals.total_cost_eur += h.total_cost_eur;
+    }
+    totals.pct_gain = if totals.total_cost_eur.is_zero() {
+        Decimal::ZERO
+    } else {
+        totals.unrealised_gain_eur / totals.total_cost_eur
+    };
 
     Ok(Envelope {
         holdings: envelope_holdings,
+        totals,
     })
 }
