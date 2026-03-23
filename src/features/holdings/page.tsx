@@ -25,7 +25,7 @@ import { columns, normalizeHolding } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
 const HoldingsPage = () => {
-	const [includeFees, setIncludeFees] = useState(true);
+	const [includeFees, setIncludeFees] = useState(false);
 	const [displayInEur, setDisplayInEur] = useState(false);
 
 	const { data } = useQuery({
@@ -50,11 +50,11 @@ const HoldingsPage = () => {
 		? Number(data?.totals.unrealised_gain_with_fees_eur ?? 0)
 		: Number(data?.totals.unrealised_gain_eur ?? 0);
 	const percentageGain = includeFees
-		? Number(data?.totals.percentage_gain_with_fees ?? 0)
-		: Number(data?.totals.percentage_gain ?? 0);
+		? Number(data?.totals.pct_gain_with_fees ?? 0)
+		: Number(data?.totals.pct_gain ?? 0);
 	const totalFees = Number(data?.totals.total_fees_eur ?? 0);
 	const totalCost = includeFees
-		? Number(data?.totals.total_cost_with_fees_eur ?? 0)
+		? Number(data?.totals.total_with_fees_eur ?? 0)
 		: Number(data?.totals.total_cost_eur ?? 0);
 	const feeDrag = Number(data?.totals.fee_drag);
 
