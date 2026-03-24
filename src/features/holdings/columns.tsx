@@ -1,6 +1,12 @@
 import { type ColumnDef, createColumnHelper } from "@tanstack/react-table";
-import { ArrowLeftRight, MoreHorizontal } from "lucide-react";
+import {
+	ArrowDownRight,
+	ArrowLeftRight,
+	ArrowUpRight,
+	MoreHorizontal,
+} from "lucide-react";
 import type { EnvelopeHolding } from "@/bindings";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -15,8 +21,15 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn, formatCurrency, formatPercentage } from "@/lib/utils";
+import {
+	cn,
+	formatCurrency,
+	formatPercentage,
+	getCurrencySymbol,
+	MIC_LABEL,
+} from "@/lib/utils";
 import { SortableHeaderButton } from "./SortableHeaderButton";
+import { TruncatedTooltip } from "./TruncatedTooltip";
 
 // ---------------------------------------------------------------------------
 // normalizeHolding
@@ -166,69 +179,83 @@ const columnHelper = createColumnHelper<NormalizedHolding>();
 export const columns: ColumnDef<NormalizedHolding>[] = [
 	columnHelper.accessor((row) => row.ticker, {
 		id: "identity",
-		meta: { label: "Effect" },
+		meta: { label: "Effect", cellClassName: "w-1/2" },
 		header: ({ column }) => <SortableHeaderButton column={column} />,
 		cell: ({ row, table }) => {
 			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
 			const weight = Number(row.original.market_value_eur) / total;
 			const angle = weight * 360;
 			const image_url = false;
+			const exchangeLabel =
+				MIC_LABEL[row.original.exchange_mic] ?? row.original.exchange_mic;
+			const currencySymbol = getCurrencySymbol(row.original.currency_code);
+			const isForeignCurrency = row.original.currency_code !== "EUR";
 
 			return (
-				<div className="group flex items-center gap-4">
-					<div
-						className="relative flex h-14 w-14 items-center justify-center rounded-full"
-						style={{
-							background: `conic-gradient(var(--ring) ${angle}deg, var(--border) ${angle}deg)`,
-						}}
-					>
-						{/* Hover glow. doesn't work consistently and disappears if shown up, I suspect webkitGTK is the culprit, bg-red-500 works perfectly */}
-						<div className="pointer-events-none absolute inset-0 rounded-full opacity-0 shadow-[0_0_12px_var(--primary)] transition-opacity duration-300 group-hover:opacity-100" />
-						<div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-background">
-							{image_url ? (
-								<img
-									src={image_url}
-									alt={row.original.ticker}
-									className="h-full w-full object-cover"
-								/>
-							) : (
-								<span className="font-medium text-sm">
-									{row.original.ticker}
+				<div className="flex w-full items-center gap-3">
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<div
+									className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
+									style={{
+										background: `conic-gradient(var(--ring) ${angle}deg, var(--border) ${angle}deg)`,
+									}}
+								>
+									<div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-background">
+										{image_url ? (
+											<img
+												src={image_url}
+												alt={row.original.ticker}
+												className="h-full w-full object-cover"
+											/>
+										) : (
+											<span className="font-medium font-mono tracking-wider">
+												{row.original.ticker}
+											</span>
+										)}
+									</div>
+								</div>
+							}
+						/>
+						<TooltipContent>
+							<div className="flex flex-col gap-0.5">
+								<span className="text-center font-bold text-muted text-xs underline">
+									Weight
 								</span>
-							)}
-						</div>
-					</div>
-					<div className="flex flex-col">
-						<p className="font-medium leading-tight">{row.original.name}</p>
-						<div className="flex items-baseline gap-1.5 text-muted-foreground">
-							<p className="text-sm">{row.original.ticker}</p>
-							{row.original.currency_code !== "EUR" && (
-								<p className="text-xs">in {row.original.currency_code}</p>
-							)}
-							<p className="text-xs">on {row.original.exchange_mic}</p>
+								<span className="font-mono text-base">
+									{formatPercentage(weight)}
+								</span>
+							</div>
+						</TooltipContent>
+					</Tooltip>
+					<div className="flex min-w-0 flex-1 flex-col gap-px">
+						<TruncatedTooltip>{row.original.name}</TruncatedTooltip>
+						<div className="flex items-center gap-1.5 whitespace-nowrap">
+							<span className="font-mono text-muted-foreground text-sm">
+								{row.original.ticker}
+							</span>
+							<span className="text-muted-foreground/40 text-xs">·</span>
+							<Badge
+								variant="outline"
+								className="flex h-5 gap-0.5 rounded px-1 font-normal text-muted-foreground text-xs"
+							>
+								<span>{exchangeLabel}</span>
+								{isForeignCurrency && (
+									<>
+										<span className="text-muted-foreground/40">·</span>
+										<span>{currencySymbol}</span>
+									</>
+								)}
+							</Badge>
+							<span className="text-muted-foreground/40 text-xs">·</span>
+							<span className="text-muted-foreground text-sm">
+								{row.original.quantity} shares
+							</span>
 						</div>
 					</div>
 				</div>
 			);
-			// return (
-			// 	<div className="flex items-center gap-4">
-			// 		<div className="flex h-14 w-14 items-center justify-center rounded-full border-3 border-primary">
-			// 			<span>{row.original.ticker}</span>
-			// 		</div>
-			// 		<div>
-			// 			<div className="font-medium">
-			// 				<p>{row.original.name}</p>
-			// 			</div>
-			// 			<div className="flex items-baseline gap-1.5 text-muted-foreground">
-			// 				<p className="text-sm">{row.original.ticker}</p>
-			// 				{row.original.currency_code !== "EUR" && (
-			// 					<p className="text-xs">in {row.original.currency_code}</p>
-			// 				)}
-			// 				<p className="text-xs">on {row.original.exchange_mic}</p>
-			// 			</div>
-			// 		</div>
-			// 	</div>
-			// );
 		},
 	}),
 	columnHelper.accessor("ticker", {
@@ -251,7 +278,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_market_value, {
 		id: "portfolio_weight",
-		meta: { label: "Weight" },
+		meta: { label: "Weight", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -263,7 +290,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		},
 	}),
 	columnHelper.accessor("quantity", {
-		meta: { label: "Quantity" },
+		meta: { label: "Quantity", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -274,7 +301,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_unit_price_basis, {
 		id: "unit_price_basis",
-		meta: { label: "Cost Basis" },
+		meta: { label: "Cost Basis", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -292,7 +319,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_total_cost, {
 		id: "paid",
-		meta: { label: "Paid" },
+		meta: { label: "Paid", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -336,7 +363,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_total_fees, {
 		id: "total_fees",
-		meta: { label: "Fees" },
+		meta: { label: "Fees", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -360,7 +387,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => Number(row.fee_drag), {
 		id: "fee_drag",
-		meta: { label: "Fee Drag" },
+		meta: { label: "Fee Drag", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -401,7 +428,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_unrealised_gain, {
 		id: "unrealised_gain",
-		meta: { label: "Profit/Loss" },
+		meta: { label: "Profit/Loss", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -442,7 +469,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	// % of bought value to add to bought value to get market_value
 	columnHelper.accessor((row) => row.display_pct_gain, {
 		id: "percentage_gain",
-		meta: { label: "% Gain" },
+		meta: { label: "% Gain", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -484,8 +511,49 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			);
 		},
 	}),
+	columnHelper.accessor((row) => row.display_unrealised_gain, {
+		id: "p&l",
+		meta: { label: "Change" },
+		header: ({ column }) => (
+			<SortableHeaderButton column={column} align="end" />
+		),
+		cell: ({ row }) => {
+			const isPos = row.original.display_unrealised_gain > 0;
+
+			return (
+				<div
+					className={cn(
+						"flex justify-end gap-1.5",
+						row.original.display_unrealised_gain >= 0
+							? "text-green-600"
+							: "text-red-600",
+					)}
+				>
+					{isPos ? (
+						<ArrowUpRight className="self-center" />
+					) : (
+						<ArrowDownRight className="self-center" />
+					)}
+					<div className={cn("flex flex-col")}>
+						<MoneyCell
+							value={row.original.display_unrealised_gain}
+							currency={row.original.display_currency}
+							isConverted={row.original.is_converted}
+							originalValue={row.original.display_unrealised_gain_original}
+							originalCurrency={row.original.currency_code}
+							className="text-base"
+						/>
+						<p className="text-end text-sm">
+							{formatPercentage(row.original.display_pct_gain)}
+						</p>
+					</div>
+				</div>
+			);
+		},
+	}),
 	columnHelper.display({
 		id: "actions",
+		meta: { cellClassName: "w-2" },
 		cell: ({ row }) => {
 			return (
 				<DropdownMenu>

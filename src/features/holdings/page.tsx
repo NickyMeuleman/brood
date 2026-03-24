@@ -101,7 +101,6 @@ const HoldingsPage = () => {
 						<Badge
 							variant="outline"
 							className={cn(
-								"gap-1",
 								isPositive
 									? "border-green-800/60 bg-green-100/60 text-green-800 dark:bg-green-900/30 dark:text-green-400"
 									: "border-red-800/60 bg-red-100/60 text-red-800 dark:bg-red-900/30 dark:text-red-400",

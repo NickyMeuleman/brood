@@ -80,7 +80,6 @@ export function DataTable<TData, TValue>({
 		<div className="flex flex-col gap-3">
 			<div className="flex items-center justify-between gap-4">
 				<Input placeholder="Search name..." className="w-auto" />
-
 				<FieldGroup className="flex flex-row justify-end">
 					<Field orientation="horizontal" className="w-auto">
 						<Switch
@@ -109,7 +108,6 @@ export function DataTable<TData, TValue>({
 						</FieldLabel>
 					</Field>
 				</FieldGroup>
-
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						render={
@@ -167,7 +165,12 @@ export function DataTable<TData, TValue>({
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => {
 									return (
-										<TableHead key={header.id}>
+										<TableHead
+											key={header.id}
+											className={
+												(header.column.columnDef.meta as any)?.cellClassName
+											}
+										>
 											{header.isPlaceholder
 												? null
 												: flexRender(
@@ -188,7 +191,16 @@ export function DataTable<TData, TValue>({
 									data-state={row.getIsSelected() && "selected"}
 								>
 									{row.getVisibleCells().map((cell) => (
-										<TableCell key={cell.id}>
+										<TableCell
+											key={cell.id}
+											className={
+												(
+													cell.column.columnDef.meta as {
+														cellClassName?: string;
+													}
+												)?.cellClassName
+											}
+										>
 											{flexRender(
 												cell.column.columnDef.cell,
 												cell.getContext(),
@@ -213,7 +225,12 @@ export function DataTable<TData, TValue>({
 							<TableRow key={footerGroup.id}>
 								{footerGroup.headers.map((footer) => {
 									return (
-										<TableHead key={footer.id}>
+										<TableHead
+											key={footer.id}
+											className={
+												(footer.column.columnDef.meta as any)?.cellClassName
+											}
+										>
 											{footer.isPlaceholder
 												? null
 												: flexRender(
