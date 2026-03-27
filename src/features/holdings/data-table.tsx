@@ -32,6 +32,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 export interface DisplayControls {
 	includeFees: boolean;
@@ -53,7 +54,9 @@ export function DataTable<TData, TValue>({
 	meta,
 	display,
 }: DataTableProps<TData, TValue>) {
-	const [sorting, setSorting] = useState<SortingState>([]);
+	const [sorting, setSorting] = useState<SortingState>([
+		{ id: "identity", desc: false },
+	]);
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
 		() =>
 			columns.reduce((acc, col) => {
@@ -79,7 +82,6 @@ export function DataTable<TData, TValue>({
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex items-center justify-between gap-4">
-				<Input placeholder="Search name..." className="w-auto" />
 				<FieldGroup className="flex flex-row justify-end">
 					<Field orientation="horizontal" className="w-auto">
 						<Switch
@@ -104,7 +106,7 @@ export function DataTable<TData, TValue>({
 							htmlFor="toolbar-eur-toggle"
 							className="cursor-pointer select-none font-normal text-sm"
 						>
-							Display in €
+							Convert to €
 						</FieldLabel>
 					</Field>
 				</FieldGroup>
@@ -120,14 +122,42 @@ export function DataTable<TData, TValue>({
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-40">
 						<DropdownMenuGroup>
-							<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-							<DropdownMenuSeparator />
+							<DropdownMenuLabel>Combo columns</DropdownMenuLabel>
 							{table
 								.getAllColumns()
 								.filter(
 									(column) =>
 										typeof column.accessorFn !== "undefined" &&
-										column.getCanHide(),
+										column.getCanHide() &&
+										column.id.startsWith("agg"),
+								)
+								.map((column) => {
+									const label = column.columnDef.meta?.label ?? column.id;
+
+									return (
+										<DropdownMenuCheckboxItem
+											key={column.id}
+											className="capitalize"
+											checked={column.getIsVisible()}
+											onCheckedChange={(value) =>
+												column.toggleVisibility(!!value)
+											}
+										>
+											{label}
+										</DropdownMenuCheckboxItem>
+									);
+								})}
+						</DropdownMenuGroup>
+						<DropdownMenuSeparator />
+						<DropdownMenuGroup>
+							<DropdownMenuLabel>Single columns</DropdownMenuLabel>
+							{table
+								.getAllColumns()
+								.filter(
+									(column) =>
+										typeof column.accessorFn !== "undefined" &&
+										column.getCanHide() &&
+										!column.id.startsWith("agg"),
 								)
 								.map((column) => {
 									const label = column.columnDef.meta?.label ?? column.id;
@@ -227,9 +257,10 @@ export function DataTable<TData, TValue>({
 									return (
 										<TableHead
 											key={footer.id}
-											className={
-												(footer.column.columnDef.meta as any)?.cellClassName
-											}
+											className={cn(
+												(footer.column.columnDef.meta as any)?.cellClassName,
+												"p-2",
+											)}
 										>
 											{footer.isPlaceholder
 												? null

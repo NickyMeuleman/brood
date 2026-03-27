@@ -157,7 +157,7 @@ function MoneyCell({
 							className,
 						)}
 					>
-						<ArrowLeftRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+						<ArrowLeftRight className="inline h-3 w-3 shrink-0 text-muted-foreground/50" />
 						<span className="underline decoration-muted-foreground/40 decoration-dashed underline-offset-2">
 							{formatCurrency(value, currency)}
 						</span>
@@ -178,8 +178,8 @@ const columnHelper = createColumnHelper<NormalizedHolding>();
 
 export const columns: ColumnDef<NormalizedHolding>[] = [
 	columnHelper.accessor((row) => row.ticker, {
-		id: "identity",
-		meta: { label: "Effect", cellClassName: "w-1/2" },
+		id: "agg_identity",
+		meta: { label: "Listing", cellClassName: "w-1/2" },
 		header: ({ column }) => <SortableHeaderButton column={column} />,
 		cell: ({ row, table }) => {
 			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
@@ -248,11 +248,179 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 									</>
 								)}
 							</Badge>
-							<span className="text-muted-foreground/40 text-xs">·</span>
-							<span className="text-muted-foreground text-sm">
-								{row.original.quantity} shares
-							</span>
 						</div>
+					</div>
+				</div>
+			);
+		},
+	}),
+	columnHelper.accessor((row) => Number(row.quantity), {
+		id: "agg_weight",
+		meta: { label: "Size" },
+		header: ({ column }) => (
+			<SortableHeaderButton column={column} align="end" />
+		),
+		cell: ({ getValue, row, table }) => {
+			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
+			const weight = Number(row.original.market_value_eur) / total;
+			return (
+				<div className="flex flex-col place-items-end gap-1">
+					<p className="font-medium text-base">
+						{getValue()}{" "}
+						<span className="font-normal text-muted-foreground text-sm">
+							shares
+						</span>
+					</p>
+					<p className="font-normal text-muted-foreground text-sm">
+						{formatPercentage(weight)}
+					</p>
+				</div>
+			);
+		},
+	}),
+	columnHelper.accessor((row) => row.display_unit_price, {
+		id: "agg_price",
+		meta: { label: "Price" },
+		header: ({ column }) => (
+			<SortableHeaderButton column={column} align="end" />
+		),
+		cell: ({ row }) => {
+			return (
+				<div className="flex flex-col place-items-end gap-1">
+					<MoneyCell
+						value={row.original.display_unit_price}
+						currency={row.original.display_currency}
+						isConverted={row.original.is_converted}
+						originalValue={row.original.display_unit_price_original}
+						originalCurrency={row.original.currency_code}
+						className="font-medium text-base"
+					/>
+					<div className="flex gap-0.5 text-muted-foreground text-sm">
+						<span>avg.</span>
+						<MoneyCell
+							value={row.original.display_unit_price_basis}
+							currency={row.original.display_currency}
+							isConverted={row.original.is_converted}
+							originalValue={row.original.display_unit_price_basis_original}
+							originalCurrency={row.original.currency_code}
+							className="font-normal text-sm"
+						/>
+					</div>
+				</div>
+			);
+		},
+	}),
+	columnHelper.accessor((row) => row.display_market_value, {
+		id: "agg_value",
+		meta: { label: "Value" },
+		header: ({ column }) => (
+			<SortableHeaderButton column={column} align="end" />
+		),
+		cell: ({ row }) => {
+			return (
+				<div className="flex flex-col place-items-end gap-1">
+					<MoneyCell
+						value={row.original.display_market_value}
+						currency={row.original.display_currency}
+						isConverted={row.original.is_converted}
+						originalValue={row.original.display_market_value_original}
+						originalCurrency={row.original.currency_code}
+						className="font-medium text-base"
+					/>
+					<div className="flex gap-0.5 text-muted-foreground text-sm">
+						<span>paid</span>
+						<MoneyCell
+							value={row.original.display_total_cost}
+							currency={row.original.display_currency}
+							isConverted={row.original.is_converted}
+							originalValue={row.original.display_total_cost_original}
+							originalCurrency={row.original.currency_code}
+							className="font-normal text-sm"
+						/>
+					</div>
+				</div>
+			);
+		},
+		footer: ({ table }) => {
+			const [market_val, cost] = table
+				.getFilteredRowModel()
+				.rows.reduce(
+					([market_val, cost], curr) => [
+						market_val + curr.original.footer_market_value_eur,
+						cost + curr.original.footer_total_cost_eur,
+					],
+					[0, 0],
+				);
+			return (
+				<div className="flex flex-col place-items-end gap-1">
+					<p className="font-medium text-base">{formatCurrency(market_val)}</p>
+					<p className="font-normal text-muted-foreground text-sm">
+						paid {formatCurrency(cost)}
+					</p>
+				</div>
+			);
+		},
+	}),
+	columnHelper.accessor((row) => row.display_unrealised_gain, {
+		id: "agg_performance",
+		meta: { label: "Performance" },
+		header: ({ column }) => (
+			<SortableHeaderButton column={column} align="end" />
+		),
+		cell: ({ row }) => {
+			const isPos = row.original.display_unrealised_gain > 0;
+
+			return (
+				<div
+					className={cn(
+						"flex place-content-end items-center gap-1",
+						row.original.display_unrealised_gain >= 0
+							? "text-green-600"
+							: "text-red-600",
+					)}
+				>
+					{isPos ? <ArrowUpRight /> : <ArrowDownRight />}
+					<div className="flex flex-col place-items-end gap-1">
+						<MoneyCell
+							value={row.original.display_unrealised_gain}
+							currency={row.original.display_currency}
+							isConverted={row.original.is_converted}
+							originalValue={row.original.display_unrealised_gain_original}
+							originalCurrency={row.original.currency_code}
+							className="font-medium text-base"
+						/>
+						<p className="font-normal text-sm">
+							{formatPercentage(row.original.display_pct_gain)}
+						</p>
+					</div>
+				</div>
+			);
+		},
+		footer: ({ table }) => {
+			const [gain, cost] = table
+				.getFilteredRowModel()
+				.rows.reduce(
+					([gain, cost], r) => [
+						gain + r.original.footer_unrealised_gain_eur,
+						cost + r.original.footer_total_cost_eur,
+					],
+					[0, 0],
+				);
+			const percentage = cost !== 0 ? gain / cost : 0;
+
+			return (
+				<div
+					className={cn(
+						"flex place-content-end items-center gap-1",
+						gain >= 0 ? "text-green-600" : "text-red-600",
+					)}
+				>
+					{gain >= 0 ? <ArrowUpRight /> : <ArrowDownRight />}
+					<div className="flex flex-col place-items-end gap-1">
+						<p className="font-medium text-base">{formatCurrency(gain)}</p>
+						<p className="font-normal text-sm">
+							{formatPercentage(percentage)}
+						</p>
 					</div>
 				</div>
 			);
@@ -277,7 +445,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		header: ({ column }) => <SortableHeaderButton column={column} />,
 	}),
 	columnHelper.accessor((row) => row.display_market_value, {
-		id: "portfolio_weight",
+		id: "weight",
 		meta: { label: "Weight", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
@@ -345,7 +513,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_unit_price, {
 		id: "unit_price",
-		meta: { label: "Price" },
+		meta: { label: "Price", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -402,7 +570,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 	}),
 	columnHelper.accessor((row) => row.display_market_value, {
 		id: "market_value",
-		meta: { label: "Total" },
+		meta: { label: "Total", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
@@ -507,46 +675,6 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 					)}
 				>
 					{formatted}
-				</div>
-			);
-		},
-	}),
-	columnHelper.accessor((row) => row.display_unrealised_gain, {
-		id: "p&l",
-		meta: { label: "Change" },
-		header: ({ column }) => (
-			<SortableHeaderButton column={column} align="end" />
-		),
-		cell: ({ row }) => {
-			const isPos = row.original.display_unrealised_gain > 0;
-
-			return (
-				<div
-					className={cn(
-						"flex justify-end gap-1.5",
-						row.original.display_unrealised_gain >= 0
-							? "text-green-600"
-							: "text-red-600",
-					)}
-				>
-					{isPos ? (
-						<ArrowUpRight className="self-center" />
-					) : (
-						<ArrowDownRight className="self-center" />
-					)}
-					<div className={cn("flex flex-col")}>
-						<MoneyCell
-							value={row.original.display_unrealised_gain}
-							currency={row.original.display_currency}
-							isConverted={row.original.is_converted}
-							originalValue={row.original.display_unrealised_gain_original}
-							originalCurrency={row.original.currency_code}
-							className="text-base"
-						/>
-						<p className="text-end text-sm">
-							{formatPercentage(row.original.display_pct_gain)}
-						</p>
-					</div>
 				</div>
 			);
 		},

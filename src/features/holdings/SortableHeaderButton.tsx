@@ -19,16 +19,16 @@ export const SortableHeaderButton = <TData, TValue>({
 				variant="ghost"
 				size="sm"
 				// sm button has px-2.5
-				className={cn(align === "start" ? "-ml-2.5" : "-mr-2.5", className)}
+				className={cn(align === "end" ? "-mr-2.5" : "-ml-2.5", className)}
 				onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
 			>
-				<span>{label}</span>
+				{label}
 				{column.getIsSorted() === "desc" ? (
-					<ArrowDown />
+					<ArrowDown data-icon="inline-end" />
 				) : column.getIsSorted() === "asc" ? (
-					<ArrowUp />
+					<ArrowUp data-icon="inline-end" />
 				) : (
-					<ChevronsUpDown />
+					<ChevronsUpDown data-icon="inline-end" />
 				)}
 			</Button>
 		</div>
