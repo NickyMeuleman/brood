@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowLeftRightIcon, Settings2 } from "lucide-react";
 import { useState } from "react";
+import type { Period } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -21,7 +22,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
 	Table,
@@ -32,13 +32,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn, PERIOD_LABEL } from "@/lib/utils";
 
 export interface DisplayControls {
 	includeFees: boolean;
 	onIncludeFeesChange: (v: boolean) => void;
 	displayInEur: boolean;
 	onDisplayInEurChange: (v: boolean) => void;
+	periods: Period[];
+	period: Period;
+	onPeriodChange: (v: Period) => void;
 }
 
 interface DataTableProps<TData, TValue> {
@@ -55,7 +59,7 @@ export function DataTable<TData, TValue>({
 	display,
 }: DataTableProps<TData, TValue>) {
 	const [sorting, setSorting] = useState<SortingState>([
-		{ id: "identity", desc: false },
+		{ id: "agg_identity", desc: false },
 	]);
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
 		() =>
@@ -82,6 +86,19 @@ export function DataTable<TData, TValue>({
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex items-center justify-between gap-4">
+				<Tabs value={display.period} onValueChange={display.onPeriodChange}>
+					<TabsList className="bg-muted p-1 text-muted-foreground">
+						{display.periods.map((period) => (
+							<TabsTrigger
+								key={period}
+								value={period}
+								className="font-medium text-muted-foreground text-xs uppercase tracking-widest data-active:bg-primary data-active:text-primary-foreground data-active:hover:text-primary-foreground/80"
+							>
+								{PERIOD_LABEL[period]}
+							</TabsTrigger>
+						))}
+					</TabsList>
+				</Tabs>
 				<FieldGroup className="flex flex-row justify-end">
 					<Field orientation="horizontal" className="w-auto">
 						<Switch
@@ -122,7 +139,7 @@ export function DataTable<TData, TValue>({
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-40">
 						<DropdownMenuGroup>
-							<DropdownMenuLabel>Combo columns</DropdownMenuLabel>
+							<DropdownMenuLabel>Grouped</DropdownMenuLabel>
 							{table
 								.getAllColumns()
 								.filter(
@@ -150,7 +167,7 @@ export function DataTable<TData, TValue>({
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
 						<DropdownMenuGroup>
-							<DropdownMenuLabel>Single columns</DropdownMenuLabel>
+							<DropdownMenuLabel>Individual</DropdownMenuLabel>
 							{table
 								.getAllColumns()
 								.filter(

@@ -3,7 +3,7 @@ use crate::db::Db;
 use crate::AppError;
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
@@ -12,6 +12,17 @@ use tauri::State;
 
 fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
     Decimal::from_str(s).map_err(|_| AppError::Database(format!("Malformed {ctx}: {s}")))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum Period {
+    FiveDays,
+    OneMonth,
+    SixMonths,
+    OneYear,
+    FiveYears,
+    Ytd,
+    AllTime,
 }
 
 /// internal to backend
@@ -145,7 +156,7 @@ async fn get_rate(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_holdings(db: State<'_, Db>) -> Result<Envelope, AppError> {
+pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope, AppError> {
     let today = Utc::now().date_naive();
 
     let open_lots = sqlx::query!(

@@ -4,19 +4,20 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
-import { cn, formatCurrency, formatPercentage } from "@/lib/utils.ts";
-import { commands } from "../../bindings.ts";
+import { cn, formatCurrency, formatPercentage, PERIODS } from "@/lib/utils.ts";
+import { commands, type Period } from "../../bindings.ts";
 import { columns, normalizeHolding } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 
 const HoldingsPage = () => {
-	const [includeFees, setIncludeFees] = useState(false);
+	const [includeFees, setIncludeFees] = useState(true);
 	const [displayInEur, setDisplayInEur] = useState(false);
+	const [period, setPeriod] = useState<Period>("AllTime");
 
 	const { data } = useQuery({
-		queryKey: ["holdings"],
+		queryKey: ["holdings", period],
 		queryFn: async () => {
-			const res = await commands.getHoldings();
+			const res = await commands.getHoldings("AllTime");
 			if (res.status === "error") throw new Error("oops");
 			return res.data;
 		},
@@ -113,6 +114,9 @@ const HoldingsPage = () => {
 						onIncludeFeesChange: setIncludeFees,
 						displayInEur,
 						onDisplayInEurChange: setDisplayInEur,
+						periods: PERIODS,
+						period,
+						onPeriodChange: setPeriod,
 					}}
 				/>
 			) : (
