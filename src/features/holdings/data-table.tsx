@@ -240,13 +240,14 @@ export function DataTable<TData, TValue>({
 									{row.getVisibleCells().map((cell) => (
 										<TableCell
 											key={cell.id}
-											className={
+											className={cn(
+												"tabular-nums tracking-tight",
 												(
 													cell.column.columnDef.meta as {
 														cellClassName?: string;
 													}
-												)?.cellClassName
-											}
+												)?.cellClassName,
+											)}
 										>
 											{flexRender(
 												cell.column.columnDef.cell,
@@ -275,8 +276,8 @@ export function DataTable<TData, TValue>({
 										<TableHead
 											key={footer.id}
 											className={cn(
+												"p-2 tabular-nums tracking-tight",
 												(footer.column.columnDef.meta as any)?.cellClassName,
-												"p-2",
 											)}
 										>
 											{footer.isPlaceholder
