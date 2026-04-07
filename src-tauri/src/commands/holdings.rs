@@ -1,29 +1,13 @@
+use crate::commands::{get_rate, CurrencyPair, NetGross, Period, PeriodContext};
 use crate::db::types::InstrumentType;
 use crate::db::Db;
-use crate::AppError;
-use chrono::{Datelike, Days, Duration, Months, NaiveDate, NaiveDateTime, Utc};
+use crate::{parse_decimal, AppError};
+use chrono::{Datelike, Days, Months, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use specta::Type;
-use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
-use std::str::FromStr;
 use tauri::State;
-
-fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
-    Decimal::from_str(s).map_err(|_| AppError::Database(format!("Malformed {ctx}: {s}")))
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub enum Period {
-    FiveDays,
-    OneMonth,
-    SixMonths,
-    OneYear,
-    FiveYears,
-    Ytd,
-    AllTime,
-}
 
 /// internal to backend
 #[derive(Debug, Clone)]
@@ -39,7 +23,6 @@ struct Holding {
     period_start_quantity: Decimal,
     unit_price: Decimal,
     period_start_unit_price: Option<Decimal>,
-    unit_price_basis: Decimal,
     cost: Decimal,
     period_cost: Decimal,
     /// total EUR cost that takes into account historical FX rates
@@ -60,6 +43,7 @@ struct Holding {
 /// sent to frontend, includes all derived values
 #[derive(Debug, Clone, Serialize, Type)]
 struct EnvelopeHolding {
+    // Identity
     listing_id: i64,
     isin: String,
     name: String,
@@ -68,118 +52,60 @@ struct EnvelopeHolding {
     instrument_type: InstrumentType,
     currency_code: String,
 
+    // state
     quantity: Decimal,
-    period_start_quantity: Decimal,
     unit_price: Decimal,
-    period_start_unit_price: Option<Decimal>,
     unit_price_eur: Decimal,
-    period_start_unit_price_eur: Option<Decimal>,
     unit_price_basis: Decimal,
     unit_price_basis_eur: Decimal,
-    market_value: Decimal,
-    period_start_market_value: Decimal,
-    market_value_eur: Decimal,
-    period_start_market_value_eur: Decimal,
-    gain: Decimal,
-    period_gain: Decimal,
-    gain_eur: Decimal,
-    period_gain_eur: Decimal,
-    pct_gain: Decimal,
-    period_pct_gain: Decimal,
-    pct_gain_eur: Decimal,
-    period_pct_gain_eur: Decimal,
-    cost: Decimal,
-    period_cost: Decimal,
-    cost_eur: Decimal,
-    period_cost_eur: Decimal,
-    fees_listing: Decimal,
-    period_fees_listing: Decimal,
-    fees_eur: Decimal,
-    period_fees_eur: Decimal,
-    cost_with_fees_listing: Decimal,
-    period_cost_with_fees_listing: Decimal,
-    cost_with_fees_eur: Decimal,
-    period_cost_with_fees_eur: Decimal,
     unit_price_basis_with_fees: Decimal,
     unit_price_basis_with_fees_eur: Decimal,
-    gain_with_fees: Decimal,
-    period_gain_with_fees: Decimal,
-    gain_with_fees_eur: Decimal,
-    period_gain_with_fees_eur: Decimal,
-    pct_gain_with_fees: Decimal,
-    period_pct_gain_with_fees: Decimal,
-    pct_gain_with_fees_eur: Decimal,
-    period_pct_gain_with_fees_eur: Decimal,
-    /// Fees as a fraction of acquisition cost (total_fees_eur / total_cost_eur).
-    /// Unlike other fields, there is no listing-currency variant: fees and cost share
-    /// the same executed_at date, so the FX rate cancels out and both formulations
-    /// produce identical results.
-    fee_drag: Decimal,
+    market_value: Decimal,
+    market_value_eur: Decimal,
+
+    // period metrics
+    all_time: PeriodContext,
+    period: PeriodContext,
+    // for fee_drag percentage: prefer the eur variants.
+    // Fees as a fraction of acquisition cost (total_fees_eur / total_cost_eur).
+    // fees and cost share the same executed_at date,
+    // so the FX rate cancels out and both formulations produce identical results.
 }
 
-/// Portfolio-level EUR aggregates. Read directly by table footers.
+/// Portfolio-level EUR aggregates.
 #[derive(Debug, Clone, Serialize, Type, Default)]
-pub struct Totals {
-    market_value_eur: Decimal,
-    period_start_market_value_eur: Decimal,
-    gain_eur: Decimal,
-    period_gain_eur: Decimal,
-    gain_with_fees_eur: Decimal,
-    period_gain_with_fees_eur: Decimal,
-    fees_eur: Decimal,
-    period_fees_eur: Decimal,
-    pct_gain: Decimal,
-    period_pct_gain: Decimal,
-    pct_gain_with_fees: Decimal,
-    period_pct_gain_with_fees: Decimal,
-    cost_eur: Decimal,
-    period_cost_eur: Decimal,
-    cost_with_fees_eur: Decimal,
-    period_cost_with_fees_eur: Decimal,
-    fee_drag: Decimal,
-    period_fee_drag: Decimal,
+pub struct TotalsEUR {
+    market_value: Decimal,
+    period_start_market_value: Decimal,
+    all_time: NetGross,
+    period: NetGross,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct Envelope {
     holdings: Vec<EnvelopeHolding>,
-    totals: Totals,
+    totals: TotalsEUR,
 }
 
-async fn get_rate(
-    pool: &Pool<Sqlite>,
-    currency_code: &str,
-    date: NaiveDate,
-) -> Result<Decimal, AppError> {
-    if currency_code == "EUR" {
-        return Ok(Decimal::ONE);
-    }
+// Both converted at the trade's execution date. At the moment the fee was actually paid.
+// fees_listing: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
+//   Used for cost basis arithmetic in listing currency.
+//   This means this is not a real payment, it's a derived intermediate
+//   (parts of the total fee amount can be paid in EUR, eg. re=bel broker fees in EUR instead of listing_currency)
+// fees_eur: all fees in EUR (if needed, different currency parts were converted via historical rate.)
+//   Historically accurate total fees in EUR.
+//   This means this is not a real payment, it's a derived intermediate
+//   (parts of the total fee amount can be paid in listing_currency, not EUR)
+struct TradeFeeAgg {
+    trade_qty: Decimal,
+    fees_listing: Decimal,
+    fees_eur: Decimal,
+}
 
-    let row = sqlx::query!(
-        r#"
-        SELECT rate_to_eur
-        FROM fx_rate
-        WHERE currency = ?1
-          AND date <= ?2
-        ORDER BY date DESC
-        LIMIT 1
-        "#,
-        currency_code,
-        date,
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::from)?;
-
-    let rate = row
-        .ok_or_else(|| {
-            AppError::Database(format!(
-                "No FX rate for {currency_code} on or before {date}"
-            ))
-        })?
-        .rate_to_eur;
-
-    parse_decimal(&rate, "FX rate")
+struct PeriodStart {
+    market_value: Decimal,
+    market_value_eur: Decimal,
+    unit_price_eur: Option<Decimal>,
 }
 
 #[tauri::command]
@@ -260,21 +186,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     .await
     .map_err(AppError::from)?;
 
-    // trade_id -> (trade_qty, fees_in_listing_currency, fees_in_eur)
-    // Both converted at the trade's execution date. At the moment the fee was actually paid.
-    // fees_listing: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
-    //   Used for cost basis arithmetic in listing currency.
-    //   This means this is not a real payment, it's a derived intermediate
-    //   (parts of the total fee amount can be paid in EUR, eg. re=bel broker fees in EUR instead of listing_currency)
-    // fees_eur: all fees in EUR (if needed, different currency parts were converted via historical rate.)
-    //   Historically accurate total fees in EUR.
-    //   This means this is not a real payment, it's a derived intermediate
-    //   (parts of the total fee amount can be paid in listing_currency, not EUR)
-    struct TradeFeeAgg {
-        trade_qty: Decimal,
-        fees_listing: Decimal,
-        fees_eur: Decimal,
-    }
+    // trade_id -> TradeFeeAgg
     let mut fee_by_trade: HashMap<i64, TradeFeeAgg> = HashMap::new();
     for r in fee_rows {
         let fee = parse_decimal(&r.fee_amount, "fee amount")?;
@@ -530,7 +442,6 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             instrument_type: lot.instrument_type,
             quantity: Decimal::ZERO,
             unit_price: Decimal::ZERO,
-            unit_price_basis: Decimal::ZERO,
             cost: Decimal::ZERO,
             cost_eur: Decimal::ZERO,
             fees_listing: Decimal::ZERO,
@@ -577,7 +488,6 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         h.unit_price = latest_prices.get(listing_id).copied().ok_or_else(|| {
             AppError::Database(format!("Missing current price for listing_id {listing_id}"))
         })?;
-        h.unit_price_basis = h.cost / h.quantity;
         h.period_start_unit_price = period_start_prices.get(listing_id).copied();
     }
 
@@ -591,252 +501,154 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                     AppError::Database(format!("No FX rate for {}", h.currency_code))
                 })
             }?;
+
             let market_value = h.quantity * h.unit_price;
             let market_value_eur = market_value * rate;
-            let gain = market_value - h.cost;
-            // INFO: unrealised_gain_eur is not the same as unrealised_gain * rate
+
+            // --- 1. ALL-TIME METRICS ---
+            let all_time_local =
+                NetGross::calculate(Decimal::ZERO, market_value, h.cost, h.fees_listing);
+            // INFO: gain_eur is not the same as gain * rate
             // Cost side uses historical acquisition rates; market side uses today's rate.
             // The difference captures both price appreciation and FX movement since purchase.
-            let gain_eur = market_value_eur - h.cost_eur;
-            // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
-            // historical FX rates are used instead of the latest one
-            let unit_price_basis_eur = h.cost_eur / h.quantity;
-            let pct_gain = gain / h.cost;
-            // INFO: pct_gain_eur is not the same as pct_gain
-            // historical FX rates are used instead of the latest one
-            let pct_gain_eur = gain_eur / h.cost_eur;
-            let cost_with_fees_listing = h.cost + h.fees_listing;
-            let cost_with_fees_eur = h.cost_eur + h.fees_eur;
-            let gain_with_fees = market_value - cost_with_fees_listing;
-            let gain_with_fees_eur = market_value_eur - cost_with_fees_eur;
-            let unit_price_basis_with_fees = cost_with_fees_listing / h.quantity;
-            let unit_price_basis_with_fees_eur = cost_with_fees_eur / h.quantity;
-            let pct_gain_with_fees = gain_with_fees / cost_with_fees_listing;
-            let pct_gain_with_fees_eur = gain_with_fees_eur / cost_with_fees_eur;
-            let fee_drag = h.fees_eur / h.cost_eur;
+            let all_time_eur =
+                NetGross::calculate(Decimal::ZERO, market_value_eur, h.cost_eur, h.fees_eur);
 
-            let (
-                period_start_unit_price_eur,
-                period_start_market_value,
-                period_start_market_value_eur,
-                period_gain,
-                period_gain_eur,
-                period_gain_with_fees,
-                period_gain_with_fees_eur,
-                period_pct_gain,
-                period_pct_gain_eur,
-                period_pct_gain_with_fees,
-                period_pct_gain_with_fees_eur,
-                period_fees_listing,
-                period_fees_eur,
-                period_cost,
-                period_cost_eur,
-                period_cost_with_fees_listing,
-                period_cost_with_fees_eur,
-            ) = if period_start_date.is_some() {
-                let (
-                    period_start_market_value,
-                    period_start_market_value_eur,
-                    period_start_unit_price_eur,
-                ) = if let Some(start_price) = h.period_start_unit_price {
-                    let period_start_rate = if h.currency_code == "EUR" {
-                        Decimal::ONE
-                    } else {
-                        period_start_rates
-                            .get(&h.currency_code)
-                            .copied()
-                            .ok_or_else(|| {
-                                AppError::Database(format!(
-                            "No period start FX rate for {} — price exists but FX data missing",
-                            h.currency_code
-                        ))
-                            })?
-                    };
-                    (
-                        h.period_start_quantity * start_price,
-                        h.period_start_quantity * start_price * period_start_rate,
-                        Some(start_price * period_start_rate),
-                    )
+            // --- 2. PERIOD START VALUES ---
+            let period_start = if let (Some(start_price), Some(_)) =
+                (h.period_start_unit_price, period_start_date)
+            {
+                let period_start_rate = if h.currency_code == "EUR" {
+                    Decimal::ONE
                 } else {
-                    // No price history at period start — position didn't exist yet
-                    (Decimal::ZERO, Decimal::ZERO, None)
+                    period_start_rates
+                        .get(&h.currency_code)
+                        .copied()
+                        .ok_or_else(|| {
+                            AppError::Database(format!(
+                                "No period start FX rate for {} - price exists but FX missing",
+                                h.currency_code
+                            ))
+                        })?
                 };
-
-                let period_gain = market_value - period_start_market_value - h.period_cost;
-                let period_gain_eur =
-                    market_value_eur - period_start_market_value_eur - h.period_cost_eur;
-                let period_gain_with_fees = period_gain - h.period_fees_listing;
-                let period_gain_with_fees_eur = period_gain_eur - h.period_fees_eur;
-
-                let period_base = period_start_market_value + h.period_cost;
-                let period_pct_gain = if period_base.is_zero() {
-                    Decimal::ZERO
-                } else {
-                    period_gain / period_base
-                };
-                let period_base_eur = period_start_market_value_eur + h.period_cost_eur;
-                let period_pct_gain_eur = if period_start_market_value_eur.is_zero() {
-                    Decimal::ZERO
-                } else {
-                    period_gain_eur / period_base_eur
-                };
-                let period_pct_gain_with_fees = if period_start_market_value.is_zero() {
-                    Decimal::ZERO
-                } else {
-                    period_gain_with_fees / period_start_market_value
-                };
-                let period_pct_gain_with_fees_eur = if period_start_market_value_eur.is_zero() {
-                    Decimal::ZERO
-                } else {
-                    period_gain_with_fees_eur / period_start_market_value_eur
-                };
-
-                let period_cost_with_fees_listing = h.period_cost + h.period_fees_listing;
-                let period_cost_with_fees_eur = h.period_cost_eur + h.period_fees_eur;
-
-                (
-                    period_start_unit_price_eur,
-                    period_start_market_value,
-                    period_start_market_value_eur,
-                    period_gain,
-                    period_gain_eur,
-                    period_gain_with_fees,
-                    period_gain_with_fees_eur,
-                    period_pct_gain,
-                    period_pct_gain_eur,
-                    period_pct_gain_with_fees,
-                    period_pct_gain_with_fees_eur,
-                    h.period_fees_listing,
-                    h.period_fees_eur,
-                    h.period_cost,
-                    h.period_cost_eur,
-                    period_cost_with_fees_listing,
-                    period_cost_with_fees_eur,
-                )
+                PeriodStart {
+                    market_value: h.period_start_quantity * start_price,
+                    market_value_eur: h.period_start_quantity * start_price * period_start_rate,
+                    unit_price_eur: Some(start_price * period_start_rate),
+                }
             } else {
-                // AllTime — period fields are identical to all-time fields
-                (
-                    Some(h.unit_price_basis * rate), // use all-time basis as period start price stand-in
-                    market_value,
-                    market_value_eur,
-                    gain,
-                    gain_eur,
-                    gain_with_fees,
-                    gain_with_fees_eur,
-                    pct_gain,
-                    pct_gain_eur,
-                    pct_gain_with_fees,
-                    pct_gain_with_fees_eur,
-                    h.fees_listing,
-                    h.fees_eur,
-                    h.cost,
-                    h.cost_eur,
-                    cost_with_fees_listing,
-                    cost_with_fees_eur,
-                )
+                PeriodStart {
+                    market_value: Decimal::ZERO,
+                    market_value_eur: Decimal::ZERO,
+                    unit_price_eur: None,
+                }
             };
 
+            // --- 3. PERIOD METRICS ---
+            let period_local = if period_start_date.is_some() {
+                NetGross::calculate(
+                    period_start.market_value,
+                    market_value,
+                    h.period_cost,
+                    h.period_fees_listing,
+                )
+            } else {
+                all_time_local
+            };
+
+            let period_eur = if period_start_date.is_some() {
+                NetGross::calculate(
+                    period_start.market_value_eur,
+                    market_value_eur,
+                    h.period_cost_eur,
+                    h.period_fees_eur,
+                )
+            } else {
+                all_time_eur
+            };
+
+            // --- 4. MAP TO ENVELOPE ---
             Ok(EnvelopeHolding {
+                // Identity
                 listing_id: h.listing_id,
+                isin: h.isin,
+                name: h.name,
                 ticker: h.ticker,
                 exchange_mic: h.exchange_mic,
                 instrument_type: h.instrument_type,
                 currency_code: h.currency_code,
 
+                // State
                 quantity: h.quantity,
-                period_start_quantity: h.period_start_quantity,
                 unit_price: h.unit_price,
-                period_start_unit_price: h.period_start_unit_price,
                 unit_price_eur: h.unit_price * rate,
-                period_start_unit_price_eur,
-                unit_price_basis: h.unit_price_basis,
-                unit_price_basis_eur,
-                isin: h.isin,
-                name: h.name,
-                cost: h.cost,
-                period_cost,
-                cost_eur: h.cost_eur,
-                period_cost_eur,
+                unit_price_basis: h.cost / h.quantity,
+                // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
+                // historical FX rates are used instead of the latest one
+                unit_price_basis_eur: h.cost_eur / h.quantity,
+                unit_price_basis_with_fees: all_time_local.net.cost / h.quantity,
+                unit_price_basis_with_fees_eur: all_time_eur.net.cost / h.quantity,
                 market_value,
-                period_start_market_value,
                 market_value_eur,
-                period_start_market_value_eur,
-                gain,
-                period_gain,
-                gain_eur,
-                period_gain_eur,
-                pct_gain,
-                period_pct_gain,
-                pct_gain_eur,
-                period_pct_gain_eur,
-                fees_listing: h.fees_listing,
-                period_fees_listing,
-                fees_eur: h.fees_eur,
-                period_fees_eur,
-                cost_with_fees_listing,
-                period_cost_with_fees_listing,
-                cost_with_fees_eur,
-                period_cost_with_fees_eur,
-                gain_with_fees,
-                period_gain_with_fees,
-                gain_with_fees_eur,
-                period_gain_with_fees_eur,
-                unit_price_basis_with_fees,
-                unit_price_basis_with_fees_eur,
-                pct_gain_with_fees,
-                period_pct_gain_with_fees,
-                pct_gain_with_fees_eur,
-                period_pct_gain_with_fees_eur,
-                fee_drag,
+
+                // Period metrics
+                all_time: PeriodContext {
+                    start_quantity: Decimal::ZERO,
+                    start_unit_price: None,
+                    start_unit_price_eur: None,
+                    start_market_value: Decimal::ZERO,
+                    start_market_value_eur: Decimal::ZERO,
+                    metrics: CurrencyPair {
+                        local: all_time_local,
+                        eur: all_time_eur,
+                    },
+                },
+                period: PeriodContext {
+                    start_quantity: h.period_start_quantity,
+                    start_unit_price: h.period_start_unit_price,
+                    start_unit_price_eur: period_start.unit_price_eur,
+                    start_market_value: period_start.market_value,
+                    start_market_value_eur: period_start.market_value_eur,
+                    metrics: CurrencyPair {
+                        local: period_local,
+                        eur: period_eur,
+                    },
+                },
             })
         })
         .collect::<Result<_, AppError>>()?;
     envelope_holdings.sort_unstable_by(|a, b| a.ticker.cmp(&b.ticker));
 
-    let mut totals = Totals::default();
+    let mut totals = TotalsEUR::default();
     for h in &envelope_holdings {
-        totals.market_value_eur += h.market_value_eur;
-        totals.gain_eur += h.gain_eur;
-        totals.cost_eur += h.cost_eur;
-        totals.fees_eur += h.fees_eur;
-        totals.cost_with_fees_eur += h.cost_with_fees_eur;
-        totals.gain_with_fees_eur += h.gain_with_fees_eur;
-        totals.period_start_market_value_eur += h.period_start_market_value_eur;
-        totals.period_gain_eur += h.period_gain_eur;
-        totals.period_gain_with_fees_eur += h.period_gain_with_fees_eur;
-        totals.period_fees_eur += h.period_fees_eur;
-        totals.period_cost_eur += h.period_cost_eur;
-        totals.period_cost_with_fees_eur += h.period_cost_with_fees_eur;
-    }
-    totals.pct_gain = if totals.cost_eur.is_zero() {
-        Decimal::ZERO
-    } else {
-        totals.gain_eur / totals.cost_eur
-    };
-    totals.pct_gain_with_fees = if totals.cost_with_fees_eur.is_zero() {
-        Decimal::ZERO
-    } else {
-        totals.gain_with_fees_eur / totals.cost_with_fees_eur
-    };
-    totals.fee_drag = totals.fees_eur / totals.cost_eur;
+        totals.market_value += h.market_value_eur;
+        totals.period_start_market_value += h.period.start_market_value_eur;
 
-    let period_base = totals.period_start_market_value_eur + totals.period_cost_eur;
-    totals.period_pct_gain = if period_base.is_zero() {
-        Decimal::ZERO
-    } else {
-        totals.period_gain_eur / period_base
+        totals.all_time += h.all_time.metrics.eur;
+        totals.period += h.period.metrics.eur;
+    }
+
+    if !totals.all_time.gross.cost.is_zero() {
+        totals.all_time.gross.pct_gain = totals.all_time.gross.gain / totals.all_time.gross.cost
     };
-    let period_base_with_fees =
-        totals.period_start_market_value_eur + totals.period_cost_with_fees_eur;
-    totals.period_pct_gain_with_fees = if period_base_with_fees.is_zero() {
-        Decimal::ZERO
-    } else {
-        totals.period_gain_with_fees_eur / period_base_with_fees
+    if !totals.all_time.net.cost.is_zero() {
+        totals.all_time.net.pct_gain = totals.all_time.net.gain / totals.all_time.net.cost
     };
-    totals.period_fee_drag = if totals.period_cost_eur.is_zero() {
-        Decimal::ZERO
-    } else {
-        totals.period_fees_eur / totals.period_cost_eur
+    // same value, both pct_fees express fees as % of cost-before-fees
+    totals.all_time.gross.pct_fees = totals.all_time.gross.fees / totals.all_time.gross.cost;
+    totals.all_time.net.pct_fees = totals.all_time.net.fees / totals.all_time.gross.cost;
+
+    let gross_period_base = totals.period_start_market_value + totals.period.gross.cost;
+    if !gross_period_base.is_zero() {
+        totals.period.gross.pct_gain = totals.period.gross.gain / gross_period_base
+    };
+    let net_period_base = totals.period_start_market_value + totals.period.net.cost;
+    if !net_period_base.is_zero() {
+        totals.period.net.pct_gain = totals.period.net.gain / net_period_base;
+    };
+    if !totals.period.gross.cost.is_zero() {
+        totals.period.gross.pct_fees = totals.period.gross.fees / totals.period.gross.cost;
+        totals.period.net.pct_fees = totals.period.gross.fees / totals.period.gross.cost;
     };
 
     Ok(Envelope {

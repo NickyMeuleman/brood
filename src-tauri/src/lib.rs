@@ -8,11 +8,17 @@ mod db;
 
 use commands::holdings::get_holdings;
 use db::init_db;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta_typescript::{BigIntExportBehavior, Typescript};
+use std::str::FromStr;
 use tauri::{async_runtime::block_on, Manager};
 use tauri_specta::{collect_commands, Builder};
 use thiserror::Error;
+
+pub fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
+    Decimal::from_str(s).map_err(|_| AppError::Database(format!("Malformed {ctx}: {s}")))
+}
 
 #[derive(Debug, Error, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "type", content = "data")]
