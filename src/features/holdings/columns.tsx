@@ -56,65 +56,55 @@ export function normalizeHolding(
 	const is_converted = displayInEur && h.currency_code !== "EUR";
 	const display_currency = is_converted ? "EUR" : h.currency_code;
 
-	const unit_price_basis_local = includeFees
-		? h.unit_price_basis_with_fees
-		: h.unit_price_basis;
-	const total_cost_local = includeFees
-		? h.total_with_fees_listing
-		: h.total_cost;
-	const unrealised_gain_local = includeFees
-		? h.unrealised_gain_with_fees
-		: h.unrealised_gain;
-	const pct_gain = includeFees ? h.pct_gain_with_fees : h.pct_gain;
-	const pct_gain_eur = includeFees ? h.pct_gain_with_fees_eur : h.pct_gain_eur;
+	// Resolves a CurrencyPair to the displayed currency
+	const cur = <T,>(pair: { local: T; eur: T }): T =>
+		is_converted ? pair.eur : pair.local;
 
-	const unit_price_basis_eur = includeFees
-		? h.unit_price_basis_with_fees_eur
-		: h.unit_price_basis_eur;
-	const total_cost_eur = includeFees ? h.total_with_fees_eur : h.total_cost_eur;
-	const unrealised_gain_eur = includeFees
-		? h.unrealised_gain_with_fees_eur
-		: h.unrealised_gain_eur;
+	// Resolves NetGross based on the fees toggle
+	const pick = <T,>(ng: { gross: T; net: T }): T =>
+		includeFees ? ng.net : ng.gross;
 
+	const atLocal = pick(h.all_time.metrics.local.metrics);
+	const atEur = pick(h.all_time.metrics.eur.metrics);
+	const basis = pick(h.current.unit_price_basis);
+
+	// Originals for tooltip (only meaningful when is_converted = true)
 	return {
 		...h,
 		is_converted,
 		display_currency,
 
-		display_unit_price_basis: is_converted
-			? Number(unit_price_basis_eur)
-			: Number(unit_price_basis_local),
-		display_total_cost: is_converted
-			? Number(total_cost_eur)
-			: Number(total_cost_local),
-		display_unrealised_gain: is_converted
-			? Number(unrealised_gain_eur)
-			: Number(unrealised_gain_local),
-		display_unit_price: is_converted
-			? Number(h.unit_price_eur)
-			: Number(h.unit_price),
-		display_market_value: is_converted
-			? Number(h.market_value_eur)
-			: Number(h.market_value),
-		display_total_fees: is_converted
-			? Number(h.total_fees_eur)
-			: Number(h.total_fees_listing),
-		display_pct_gain: is_converted ? Number(pct_gain_eur) : Number(pct_gain),
-		display_fee_drag: Number(h.fee_drag),
+		// Current state
+		display_unit_price: Number(cur(h.current.unit_price)),
+		display_unit_price_original: Number(h.current.unit_price.local),
+		display_market_value: Number(cur(h.current.value)),
+		display_market_value_original: Number(h.current.value.local),
+		display_unit_price_basis: Number(cur(basis)),
+		display_unit_price_basis_original: Number(basis.local),
 
-		// Originals for tooltip (only meaningful when is_converted = true)
-		display_unit_price_basis_original: Number(unit_price_basis_local),
-		display_total_cost_original: Number(total_cost_local),
-		display_unrealised_gain_original: Number(unrealised_gain_local),
-		display_unit_price_original: Number(h.unit_price),
-		display_market_value_original: Number(h.market_value),
-		display_total_fees_original: Number(h.total_fees_listing),
+		// All-time perf
+		display_cost: Number(is_converted ? atEur.cost : atLocal.cost),
+		display_cost_original: Number(atLocal.cost),
+		display_gain: Number(is_converted ? atEur.gain : atLocal.gain),
+		display_gain_original: Number(atLocal.gain),
+		display_pct_gain: Number(is_converted ? atEur.pct_gain : atLocal.pct_gain),
 
-		// Footer values always in EUR regardless of toggle
-		footer_total_cost_eur: Number(total_cost_eur),
-		footer_unrealised_gain_eur: Number(unrealised_gain_eur),
-		footer_total_fees_eur: Number(h.total_fees_eur),
-		footer_market_value_eur: Number(h.market_value_eur),
+		// Fees - not affected by pick(), fees are the same on both gross/net
+		// includeFees controls whether fees are baked into cost/gain, not whether they're shown here
+		display_fees: Number(
+			is_converted
+				? h.all_time.metrics.eur.fees
+				: h.all_time.metrics.local.fees,
+		),
+		display_fees_original: Number(h.all_time.metrics.local.fees),
+		// always EUR, always all-time
+		display_fee_drag: Number(h.all_time.metrics.eur.pct_fees),
+
+		// Footer - always EUR
+		footer_market_value_eur: Number(h.current.value.eur),
+		footer_cost_eur: Number(atEur.cost),
+		footer_gain_eur: Number(atEur.gain),
+		footer_fees_eur: Number(h.all_time.metrics.eur.fees),
 	};
 }
 
@@ -182,8 +172,8 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		meta: { label: "Listing", cellClassName: "w-1/2" },
 		header: ({ column }) => <SortableHeaderButton column={column} />,
 		cell: ({ row, table }) => {
-			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
-			const weight = Number(row.original.market_value_eur) / total;
+			const total = Number(table.options.meta?.totals?.value ?? 1);
+			const weight = row.original.footer_market_value_eur / total;
 			const angle = weight * 360;
 			const image_url = false;
 			const exchangeLabel =
@@ -254,15 +244,15 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			);
 		},
 	}),
-	columnHelper.accessor((row) => Number(row.quantity), {
+	columnHelper.accessor((row) => Number(row.current.quantity), {
 		id: "agg_weight",
 		meta: { label: "Size" },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
 		cell: ({ getValue, row, table }) => {
-			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
-			const weight = Number(row.original.market_value_eur) / total;
+			const total = Number(table.options.meta?.totals?.value ?? 1);
+			const weight = row.original.footer_market_value_eur / total;
 			return (
 				<div className="flex flex-col place-items-end gap-1">
 					<p className="font-medium text-base">
@@ -330,10 +320,10 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 					<div className="flex gap-0.5 text-muted-foreground text-sm">
 						<span>paid</span>
 						<MoneyCell
-							value={row.original.display_total_cost}
+							value={row.original.display_cost}
 							currency={row.original.display_currency}
 							isConverted={row.original.is_converted}
-							originalValue={row.original.display_total_cost_original}
+							originalValue={row.original.display_cost_original}
 							originalCurrency={row.original.currency_code}
 							className="font-normal text-sm"
 						/>
@@ -347,7 +337,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 				.rows.reduce(
 					([market_val, cost], curr) => [
 						market_val + curr.original.footer_market_value_eur,
-						cost + curr.original.footer_total_cost_eur,
+						cost + curr.original.footer_cost_eur,
 					],
 					[0, 0],
 				);
@@ -361,31 +351,29 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			);
 		},
 	}),
-	columnHelper.accessor((row) => row.display_unrealised_gain, {
+	columnHelper.accessor((row) => row.display_gain, {
 		id: "agg_performance",
 		meta: { label: "Performance" },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
 		),
 		cell: ({ row }) => {
-			const isPos = row.original.display_unrealised_gain > 0;
+			const isPos = row.original.display_gain > 0;
 
 			return (
 				<div
 					className={cn(
 						"flex place-content-end items-center gap-1",
-						row.original.display_unrealised_gain >= 0
-							? "text-green-600"
-							: "text-red-600",
+						row.original.display_gain >= 0 ? "text-green-600" : "text-red-600",
 					)}
 				>
 					{isPos ? <ArrowUpRight /> : <ArrowDownRight />}
 					<div className="flex flex-col place-items-end gap-1">
 						<MoneyCell
-							value={row.original.display_unrealised_gain}
+							value={row.original.display_gain}
 							currency={row.original.display_currency}
 							isConverted={row.original.is_converted}
-							originalValue={row.original.display_unrealised_gain_original}
+							originalValue={row.original.display_gain_original}
 							originalCurrency={row.original.currency_code}
 							className="font-medium text-base"
 						/>
@@ -401,8 +389,8 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 				.getFilteredRowModel()
 				.rows.reduce(
 					([gain, cost], r) => [
-						gain + r.original.footer_unrealised_gain_eur,
-						cost + r.original.footer_total_cost_eur,
+						gain + r.original.footer_gain_eur,
+						cost + r.original.footer_cost_eur,
 					],
 					[0, 0],
 				);
@@ -452,12 +440,13 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		),
 		cell: ({ row, table }) => {
 			const total = Number(table.options.meta?.totals?.market_value_eur ?? 1);
-			const val = Number(row.original.market_value_eur) / total;
+			const val = row.original.footer_market_value_eur / total;
 			const formatted = formatPercentage(val);
 			return <div className="text-right font-medium">{formatted}</div>;
 		},
 	}),
-	columnHelper.accessor("quantity", {
+	columnHelper.accessor((row) => Number(row.current.quantity), {
+		id: "quantity",
 		meta: { label: "Quantity", hideByDefault: true },
 		header: ({ column }) => (
 			<SortableHeaderButton column={column} align="end" />
@@ -485,7 +474,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			);
 		},
 	}),
-	columnHelper.accessor((row) => row.display_total_cost, {
+	columnHelper.accessor((row) => row.display_cost, {
 		id: "paid",
 		meta: { label: "Paid", hideByDefault: true },
 		header: ({ column }) => (
@@ -494,17 +483,17 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		cell: ({ row }) => {
 			return (
 				<MoneyCell
-					value={row.original.display_total_cost}
+					value={row.original.display_cost}
 					currency={row.original.display_currency}
 					isConverted={row.original.is_converted}
-					originalValue={row.original.display_total_cost_original}
+					originalValue={row.original.display_cost_original}
 					originalCurrency={row.original.currency_code}
 				/>
 			);
 		},
 		footer: ({ table }) => {
 			const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-				const val = curr.original.footer_total_cost_eur;
+				const val = curr.original.footer_cost_eur;
 				return acc + val;
 			}, 0);
 			const formatted = formatCurrency(total, "EUR");
@@ -529,7 +518,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			);
 		},
 	}),
-	columnHelper.accessor((row) => row.display_total_fees, {
+	columnHelper.accessor((row) => row.display_fees, {
 		id: "total_fees",
 		meta: { label: "Fees", hideByDefault: true },
 		header: ({ column }) => (
@@ -537,23 +526,23 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		),
 		cell: ({ row }) => (
 			<MoneyCell
-				value={row.original.display_total_fees}
+				value={row.original.display_fees}
 				currency={row.original.display_currency}
 				isConverted={row.original.is_converted}
-				originalValue={row.original.display_total_fees_original}
+				originalValue={row.original.display_fees_original}
 				originalCurrency={row.original.currency_code}
 			/>
 		),
 		footer: ({ table }) => {
 			const total = table
 				.getFilteredRowModel()
-				.rows.reduce((acc, r) => acc + r.original.footer_total_fees_eur, 0);
+				.rows.reduce((acc, r) => acc + r.original.footer_fees_eur, 0);
 			return (
 				<div className="text-right font-bold">{formatCurrency(total)}</div>
 			);
 		},
 	}),
-	columnHelper.accessor((row) => Number(row.fee_drag), {
+	columnHelper.accessor((row) => row.display_fee_drag, {
 		id: "fee_drag",
 		meta: { label: "Fee Drag", hideByDefault: true },
 		header: ({ column }) => (
@@ -594,7 +583,7 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 			return <div className="text-right font-bold">{formatted}</div>;
 		},
 	}),
-	columnHelper.accessor((row) => row.display_unrealised_gain, {
+	columnHelper.accessor((row) => row.display_gain, {
 		id: "unrealised_gain",
 		meta: { label: "Profit/Loss", hideByDefault: true },
 		header: ({ column }) => (
@@ -603,22 +592,20 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		cell: ({ row }) => {
 			return (
 				<MoneyCell
-					value={row.original.display_unrealised_gain}
+					value={row.original.display_gain}
 					currency={row.original.display_currency}
 					isConverted={row.original.is_converted}
-					originalValue={row.original.display_unrealised_gain_original}
+					originalValue={row.original.display_gain_original}
 					originalCurrency={row.original.currency_code}
 					className={cn(
-						row.original.display_unrealised_gain >= 0
-							? "text-green-600"
-							: "text-red-600",
+						row.original.display_gain >= 0 ? "text-green-600" : "text-red-600",
 					)}
 				/>
 			);
 		},
 		footer: ({ table }) => {
 			const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-				const val = curr.original.footer_unrealised_gain_eur;
+				const val = curr.original.footer_gain_eur;
 				return acc + val;
 			}, 0);
 			const formatted = formatCurrency(total, "EUR");
@@ -657,14 +644,8 @@ export const columns: ColumnDef<NormalizedHolding>[] = [
 		},
 		footer: ({ table }) => {
 			const rows = table.getFilteredRowModel().rows;
-			const gain = rows.reduce(
-				(acc, r) => acc + r.original.footer_unrealised_gain_eur,
-				0,
-			);
-			const cost = rows.reduce(
-				(acc, r) => acc + r.original.footer_total_cost_eur,
-				0,
-			);
+			const gain = rows.reduce((acc, r) => acc + r.original.footer_gain_eur, 0);
+			const cost = rows.reduce((acc, r) => acc + r.original.footer_cost_eur, 0);
 			const percentage = cost !== 0 ? gain / cost : 0;
 			const formatted = formatPercentage(percentage);
 			return (

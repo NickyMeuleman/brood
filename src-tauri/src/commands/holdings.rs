@@ -1,4 +1,6 @@
-use crate::commands::{get_rate, CurrencyPair, NetGross, Period, PeriodContext};
+use crate::commands::{
+    get_rate, CurrencyPair, NetGross, Performance, Period, PeriodContext, Snapshot,
+};
 use crate::db::types::InstrumentType;
 use crate::db::Db;
 use crate::{parse_decimal, AppError};
@@ -9,7 +11,20 @@ use specta::Type;
 use std::collections::HashMap;
 use tauri::State;
 
-/// internal to backend
+#[derive(Default, Debug, Clone)]
+struct CostAccumulator {
+    /// local: total listing currency cost, no FX impact
+    /// eur: total EUR cost that takes into account historical FX rates
+    cost: CurrencyPair<Decimal>,
+    /// local: Fees normalised to listing currency via historical cross-rates.
+    /// For holdings where some fees were paid in a different currency (e.g. EUR fees on a USD stock),
+    /// this is a derived arithmetic intermediate, not an actual payment in listing currency.
+    /// eur: Fees normalised to eur via historical cross-rates.
+    /// For holdings where some fees were paid in a different currency (e.g. USD fees on a EUR stock),
+    /// this is a derived arithmetic intermediate, not an actual payment in listing currency.
+    fees: CurrencyPair<Decimal>,
+}
+
 #[derive(Debug, Clone)]
 struct Holding {
     listing_id: i64,
@@ -19,31 +34,20 @@ struct Holding {
     exchange_mic: String,
     instrument_type: InstrumentType,
     currency_code: String,
+
     quantity: Decimal,
-    period_start_quantity: Decimal,
     unit_price: Decimal,
+
+    period_start_quantity: Decimal,
     period_start_unit_price: Option<Decimal>,
-    cost: Decimal,
-    period_cost: Decimal,
-    /// total EUR cost that takes into account historical FX rates
-    cost_eur: Decimal,
-    period_cost_eur: Decimal,
-    /// Fees normalised to listing currency via historical cross-rates.
-    /// For holdings where some fees were paid in a different currency (e.g. EUR fees on a USD stock),
-    /// this is a derived arithmetic intermediate, not an actual payment in listing currency.
-    fees_listing: Decimal,
-    period_fees_listing: Decimal,
-    /// Fees normalised to eur via historical cross-rates.
-    /// For holdings where some fees were paid in a different currency (e.g. USD fees on a EUR stock),
-    /// this is a derived arithmetic intermediate, not an actual payment in listing currency.
-    fees_eur: Decimal,
-    period_fees_eur: Decimal,
+
+    all_time: CostAccumulator,
+    period: CostAccumulator,
 }
 
 /// sent to frontend, includes all derived values
 #[derive(Debug, Clone, Serialize, Type)]
 struct EnvelopeHolding {
-    // Identity
     listing_id: i64,
     isin: String,
     name: String,
@@ -51,34 +55,18 @@ struct EnvelopeHolding {
     exchange_mic: String,
     instrument_type: InstrumentType,
     currency_code: String,
-
-    // state
-    quantity: Decimal,
-    unit_price: Decimal,
-    unit_price_eur: Decimal,
-    unit_price_basis: Decimal,
-    unit_price_basis_eur: Decimal,
-    unit_price_basis_with_fees: Decimal,
-    unit_price_basis_with_fees_eur: Decimal,
-    market_value: Decimal,
-    market_value_eur: Decimal,
-
-    // period metrics
+    current: Snapshot,
     all_time: PeriodContext,
     period: PeriodContext,
-    // for fee_drag percentage: prefer the eur variants.
-    // Fees as a fraction of acquisition cost (total_fees_eur / total_cost_eur).
-    // fees and cost share the same executed_at date,
-    // so the FX rate cancels out and both formulations produce identical results.
 }
 
 /// Portfolio-level EUR aggregates.
 #[derive(Debug, Clone, Serialize, Type, Default)]
 pub struct TotalsEUR {
-    market_value: Decimal,
-    period_start_market_value: Decimal,
-    all_time: NetGross,
-    period: NetGross,
+    value: Decimal,
+    period_start_value: Decimal,
+    all_time: Performance,
+    period: Performance,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -88,7 +76,7 @@ pub struct Envelope {
 }
 
 // Both converted at the trade's execution date. At the moment the fee was actually paid.
-// fees_listing: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
+// fees.local: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
 //   Used for cost basis arithmetic in listing currency.
 //   This means this is not a real payment, it's a derived intermediate
 //   (parts of the total fee amount can be paid in EUR, eg. re=bel broker fees in EUR instead of listing_currency)
@@ -98,14 +86,13 @@ pub struct Envelope {
 //   (parts of the total fee amount can be paid in listing_currency, not EUR)
 struct TradeFeeAgg {
     trade_qty: Decimal,
-    fees_listing: Decimal,
-    fees_eur: Decimal,
+    fees: CurrencyPair<Decimal>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
 struct PeriodStart {
-    market_value: Decimal,
-    market_value_eur: Decimal,
-    unit_price_eur: Option<Decimal>,
+    value: CurrencyPair<Decimal>,
+    unit_price: Option<CurrencyPair<Decimal>>,
 }
 
 #[tauri::command]
@@ -201,17 +188,15 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         let entry = fee_by_trade.entry(r.trade_id).or_insert(TradeFeeAgg {
             // trade_qty is identical across all fee rows for the same trade
             trade_qty: parse_decimal(&r.trade_qty, "trade qty")?,
-            fees_listing: Decimal::ZERO,
-            fees_eur: Decimal::ZERO,
+            fees: CurrencyPair::default(),
         });
-        entry.fees_listing += fee_listing;
-        entry.fees_eur += fee_eur;
+        entry.fees.local += fee_listing;
+        entry.fees.eur += fee_eur;
     }
 
     // lot_id -> original_acquisition_date
     let mut acquisition_dates: HashMap<i64, NaiveDate> = HashMap::new();
-    let mut lot_fees_listing: HashMap<i64, Decimal> = HashMap::new();
-    let mut lot_fees_eur: HashMap<i64, Decimal> = HashMap::new();
+    let mut lot_fees: HashMap<i64, CurrencyPair<Decimal>> = HashMap::new();
     let mut lot_costs: HashMap<i64, Decimal> = HashMap::new(); // for CA fee proportion only
 
     for r in all_lots {
@@ -232,7 +217,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                     .get(&trade_id)
                     .map(|agg| {
                         let ratio = qty / agg.trade_qty;
-                        (agg.fees_listing * ratio, agg.fees_eur * ratio)
+                        (agg.fees.local * ratio, agg.fees.eur * ratio)
                     })
                     .unwrap_or_default();
 
@@ -243,8 +228,8 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                 // (topological order guarantees parent comes first)
                 let date = acquisition_dates[&parent_id];
                 let ratio = lot_costs[&r.id] / lot_costs[&parent_id];
-                let fees_listing = lot_fees_listing[&parent_id] * ratio;
-                let fees_eur = lot_fees_eur[&parent_id] * ratio;
+                let fees_listing = lot_fees[&parent_id].local * ratio;
+                let fees_eur = lot_fees[&parent_id].eur * ratio;
 
                 (date, fees_listing, fees_eur)
             }
@@ -257,8 +242,13 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         };
 
         acquisition_dates.insert(r.id, date);
-        lot_fees_listing.insert(r.id, fees_listing);
-        lot_fees_eur.insert(r.id, fees_eur);
+        lot_fees.insert(
+            r.id,
+            CurrencyPair {
+                local: fees_listing,
+                eur: fees_eur,
+            },
+        );
     }
 
     let mut sales = HashMap::new();
@@ -434,24 +424,21 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         // so taking them from the first lot encountered is correct.
         let holding = holdings.entry(listing_id).or_insert(Holding {
             listing_id,
-            currency_code: lot.currency_code.clone(),
-            exchange_mic: lot.exchange_mic,
-            ticker: lot.ticker,
-            name: lot.name,
             isin: lot.isin,
+            name: lot.name,
+            ticker: lot.ticker,
+            exchange_mic: lot.exchange_mic,
             instrument_type: lot.instrument_type,
+            currency_code: lot.currency_code.clone(),
+
             quantity: Decimal::ZERO,
             unit_price: Decimal::ZERO,
-            cost: Decimal::ZERO,
-            cost_eur: Decimal::ZERO,
-            fees_listing: Decimal::ZERO,
-            fees_eur: Decimal::ZERO,
+
             period_start_quantity: Decimal::ZERO,
             period_start_unit_price: None,
-            period_cost: Decimal::ZERO,
-            period_cost_eur: Decimal::ZERO,
-            period_fees_listing: Decimal::ZERO,
-            period_fees_eur: Decimal::ZERO,
+
+            all_time: CostAccumulator::default(),
+            period: CostAccumulator::default(),
         });
         // price_per_unit is always correct, even for CA-originated lots because it is recalculated
         // at CA time (old lot is closed, new lot with adjusted price is added)
@@ -464,24 +451,24 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             .unwrap_or(false); // AllTime: no lots are "new"
         let rate = get_rate(&db.pool, &lot.currency_code, acquisition_date).await?;
         let cost_eur = cost * rate;
-        let fees_listing = lot_fees_listing[&lot.id] * remaining_ratio;
-        let fees_eur = lot_fees_eur[&lot.id] * remaining_ratio;
+        let fees_listing = lot_fees[&lot.id].local * remaining_ratio;
+        let fees_eur = lot_fees[&lot.id].eur * remaining_ratio;
 
         if is_during_period {
             // Acquired during period
-            holding.period_cost += cost;
-            holding.period_cost_eur += cost_eur;
-            holding.period_fees_listing += fees_listing;
-            holding.period_fees_eur += fees_eur;
+            holding.period.cost.local += cost;
+            holding.period.cost.eur += cost_eur;
+            holding.period.fees.local += fees_listing;
+            holding.period.fees.eur += fees_eur;
         } else {
             // Held at period start
             holding.period_start_quantity += remaining;
         }
         holding.quantity += remaining;
-        holding.cost += cost;
-        holding.cost_eur += cost_eur;
-        holding.fees_listing += fees_listing;
-        holding.fees_eur += fees_eur;
+        holding.all_time.cost.local += cost;
+        holding.all_time.cost.eur += cost_eur;
+        holding.all_time.fees.local += fees_listing;
+        holding.all_time.fees.eur += fees_eur;
     }
 
     for (listing_id, h) in holdings.iter_mut() {
@@ -502,17 +489,25 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                 })
             }?;
 
-            let market_value = h.quantity * h.unit_price;
-            let market_value_eur = market_value * rate;
+            let value = h.quantity * h.unit_price;
+            let value_eur = value * rate;
 
             // --- 1. ALL-TIME METRICS ---
-            let all_time_local =
-                NetGross::calculate(Decimal::ZERO, market_value, h.cost, h.fees_listing);
+            let all_time_local = Performance::calculate(
+                Decimal::ZERO,
+                value,
+                h.all_time.cost.local,
+                h.all_time.fees.local,
+            );
             // INFO: gain_eur is not the same as gain * rate
-            // Cost side uses historical acquisition rates; market side uses today's rate.
+            // Cost side uses historical acquisition rates; value side uses today's rate.
             // The difference captures both price appreciation and FX movement since purchase.
-            let all_time_eur =
-                NetGross::calculate(Decimal::ZERO, market_value_eur, h.cost_eur, h.fees_eur);
+            let all_time_eur = Performance::calculate(
+                Decimal::ZERO,
+                value_eur,
+                h.all_time.cost.eur,
+                h.all_time.fees.eur,
+            );
 
             // --- 2. PERIOD START VALUES ---
             let period_start = if let (Some(start_price), Some(_)) =
@@ -532,42 +527,50 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                         })?
                 };
                 PeriodStart {
-                    market_value: h.period_start_quantity * start_price,
-                    market_value_eur: h.period_start_quantity * start_price * period_start_rate,
-                    unit_price_eur: Some(start_price * period_start_rate),
+                    value: CurrencyPair {
+                        local: h.period_start_quantity * start_price,
+                        eur: h.period_start_quantity * start_price * period_start_rate,
+                    },
+                    unit_price: Some(CurrencyPair {
+                        local: start_price,
+                        eur: start_price * period_start_rate,
+                    }),
                 }
             } else {
-                PeriodStart {
-                    market_value: Decimal::ZERO,
-                    market_value_eur: Decimal::ZERO,
-                    unit_price_eur: None,
-                }
+                PeriodStart::default()
             };
 
             // --- 3. PERIOD METRICS ---
-            let period_local = if period_start_date.is_some() {
-                NetGross::calculate(
-                    period_start.market_value,
-                    market_value,
-                    h.period_cost,
-                    h.period_fees_listing,
-                )
+            let period_metrics = if period_start_date.is_some() {
+                CurrencyPair {
+                    local: Performance::calculate(
+                        period_start.value.local,
+                        value,
+                        h.period.cost.local,
+                        h.period.fees.local,
+                    ),
+                    eur: Performance::calculate(
+                        period_start.value.eur,
+                        value_eur,
+                        h.period.cost.eur,
+                        h.period.fees.eur,
+                    ),
+                }
             } else {
-                all_time_local
-            };
-
-            let period_eur = if period_start_date.is_some() {
-                NetGross::calculate(
-                    period_start.market_value_eur,
-                    market_value_eur,
-                    h.period_cost_eur,
-                    h.period_fees_eur,
-                )
-            } else {
-                all_time_eur
+                CurrencyPair {
+                    local: all_time_local,
+                    eur: all_time_eur,
+                }
             };
 
             // --- 4. MAP TO ENVELOPE ---
+            let get_basis = |cost: Decimal| -> Decimal {
+                if h.quantity.is_zero() {
+                    Decimal::ZERO
+                } else {
+                    cost / h.quantity
+                }
+            };
             Ok(EnvelopeHolding {
                 // Identity
                 listing_id: h.listing_id,
@@ -579,40 +582,43 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                 currency_code: h.currency_code,
 
                 // State
-                quantity: h.quantity,
-                unit_price: h.unit_price,
-                unit_price_eur: h.unit_price * rate,
-                unit_price_basis: h.cost / h.quantity,
-                // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
-                // historical FX rates are used instead of the latest one
-                unit_price_basis_eur: h.cost_eur / h.quantity,
-                unit_price_basis_with_fees: all_time_local.net.cost / h.quantity,
-                unit_price_basis_with_fees_eur: all_time_eur.net.cost / h.quantity,
-                market_value,
-                market_value_eur,
+                current: Snapshot {
+                    quantity: h.quantity,
+                    unit_price: CurrencyPair {
+                        local: h.unit_price,
+                        eur: h.unit_price * rate,
+                    },
+                    value: CurrencyPair {
+                        local: value,
+                        eur: value_eur,
+                    },
+                    unit_price_basis: NetGross {
+                        net: CurrencyPair {
+                            local: get_basis(all_time_local.metrics.net.cost),
+                            eur: get_basis(all_time_eur.metrics.net.cost),
+                        },
+                        gross: CurrencyPair {
+                            local: get_basis(h.all_time.cost.local),
+                            // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
+                            // historical FX rates are used instead of the latest one
+                            eur: get_basis(h.all_time.cost.eur),
+                        },
+                    },
+                },
 
                 // Period metrics
                 all_time: PeriodContext {
-                    start_quantity: Decimal::ZERO,
-                    start_unit_price: None,
-                    start_unit_price_eur: None,
-                    start_market_value: Decimal::ZERO,
-                    start_market_value_eur: Decimal::ZERO,
                     metrics: CurrencyPair {
                         local: all_time_local,
                         eur: all_time_eur,
                     },
+                    ..Default::default()
                 },
                 period: PeriodContext {
                     start_quantity: h.period_start_quantity,
-                    start_unit_price: h.period_start_unit_price,
-                    start_unit_price_eur: period_start.unit_price_eur,
-                    start_market_value: period_start.market_value,
-                    start_market_value_eur: period_start.market_value_eur,
-                    metrics: CurrencyPair {
-                        local: period_local,
-                        eur: period_eur,
-                    },
+                    start_unit_price: period_start.unit_price,
+                    start_value: period_start.value,
+                    metrics: period_metrics,
                 },
             })
         })
@@ -621,35 +627,13 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
 
     let mut totals = TotalsEUR::default();
     for h in &envelope_holdings {
-        totals.market_value += h.market_value_eur;
-        totals.period_start_market_value += h.period.start_market_value_eur;
-
+        totals.value += h.current.value.eur;
+        totals.period_start_value += h.period.start_value.eur;
         totals.all_time += h.all_time.metrics.eur;
         totals.period += h.period.metrics.eur;
     }
-
-    if !totals.all_time.gross.cost.is_zero() {
-        totals.all_time.gross.pct_gain = totals.all_time.gross.gain / totals.all_time.gross.cost
-    };
-    if !totals.all_time.net.cost.is_zero() {
-        totals.all_time.net.pct_gain = totals.all_time.net.gain / totals.all_time.net.cost
-    };
-    // same value, both pct_fees express fees as % of cost-before-fees
-    totals.all_time.gross.pct_fees = totals.all_time.gross.fees / totals.all_time.gross.cost;
-    totals.all_time.net.pct_fees = totals.all_time.net.fees / totals.all_time.gross.cost;
-
-    let gross_period_base = totals.period_start_market_value + totals.period.gross.cost;
-    if !gross_period_base.is_zero() {
-        totals.period.gross.pct_gain = totals.period.gross.gain / gross_period_base
-    };
-    let net_period_base = totals.period_start_market_value + totals.period.net.cost;
-    if !net_period_base.is_zero() {
-        totals.period.net.pct_gain = totals.period.net.gain / net_period_base;
-    };
-    if !totals.period.gross.cost.is_zero() {
-        totals.period.gross.pct_fees = totals.period.gross.fees / totals.period.gross.cost;
-        totals.period.net.pct_fees = totals.period.gross.fees / totals.period.gross.cost;
-    };
+    totals.all_time.recalc_pcts(Decimal::ZERO);
+    totals.period.recalc_pcts(totals.period_start_value);
 
     Ok(Envelope {
         holdings: envelope_holdings,
