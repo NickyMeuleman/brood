@@ -1,28 +1,48 @@
-import type { Column } from "@tanstack/react-table";
+import type { HeaderContext } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import type { Period } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, PERIOD_LABEL } from "@/lib/utils";
+import type { HoldingRow } from "./columns";
 
-export const SortableHeaderButton = <TData, TValue>({
-	className,
-	column,
-	align = "start",
+function Label({
+	label,
+	period,
+	showPeriod,
 }: {
-	className?: string;
-	column: Column<TData, TValue>;
-	align?: "start" | "end";
-}) => {
-	const label = column.columnDef.meta?.label ?? column.id;
+	label?: string;
+	period?: Period;
+	showPeriod?: boolean;
+}) {
+	return (
+		<p className="flex items-baseline gap-0.5">
+			<span>{label}</span>
+			{showPeriod && period && period !== "AllTime" ? (
+				<span className="text-muted-foreground text-xs uppercase tracking-widest">
+					({PERIOD_LABEL[period]})
+				</span>
+			) : null}
+		</p>
+	);
+}
+
+export function SortableHeaderButton<TValue>({
+	column,
+	table,
+}: HeaderContext<HoldingRow, TValue>) {
+	const { label, align = "start", showPeriod } = column.columnDef.meta ?? {};
+	const period = table.options.meta?.period;
+
 	return (
 		<div className={cn(align === "end" && "text-right")}>
 			<Button
 				variant="ghost"
 				size="sm"
 				// sm button has px-2.5
-				className={cn(align === "end" ? "-mr-2.5" : "-ml-2.5", className)}
+				className={cn(align === "end" ? "-mr-2.5" : "-ml-2.5")}
 				onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
 			>
-				{label}
+				<Label label={label} period={period} showPeriod={showPeriod} />
 				{column.getIsSorted() === "desc" ? (
 					<ArrowDown data-icon="inline-end" />
 				) : column.getIsSorted() === "asc" ? (
@@ -33,4 +53,4 @@ export const SortableHeaderButton = <TData, TValue>({
 			</Button>
 		</div>
 	);
-};
+}

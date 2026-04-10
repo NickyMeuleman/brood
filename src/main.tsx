@@ -6,7 +6,7 @@ import { routeTree } from "./routeTree.gen";
 import "@/styles/global.css";
 import type { RowData } from "@tanstack/react-table";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { HoldingsTotals } from "./bindings";
+import type { Period, TotalsEUR } from "./bindings";
 
 const router = createRouter({ routeTree });
 const queryClient = new QueryClient();
@@ -19,12 +19,15 @@ declare module "@tanstack/react-router" {
 
 declare module "@tanstack/react-table" {
 	interface TableMeta<TData extends RowData> {
-		totals?: HoldingsTotals;
+		totals?: TotalsEUR;
+		period: Period;
 	}
 	interface ColumnMeta<TData extends RowData, TValue> {
 		label?: string;
 		hideByDefault?: boolean;
-    cellClassName?: string;
+		cellClassName?: string;
+		align?: "start" | "end";
+    showPeriod?: boolean;
 	}
 }
 

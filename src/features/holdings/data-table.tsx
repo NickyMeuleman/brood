@@ -80,7 +80,10 @@ export function DataTable<TData, TValue>({
 		onSortingChange: setSorting,
 		onColumnVisibilityChange: setColumnVisibility,
 		state: { sorting, columnVisibility },
-		meta,
+		meta: {
+			...meta,
+			period: display.period,
+		},
 	});
 
 	return (
@@ -215,7 +218,7 @@ export function DataTable<TData, TValue>({
 										<TableHead
 											key={header.id}
 											className={
-												(header.column.columnDef.meta as any)?.cellClassName
+												header.column.columnDef.meta?.cellClassName
 											}
 										>
 											{header.isPlaceholder
@@ -242,11 +245,7 @@ export function DataTable<TData, TValue>({
 											key={cell.id}
 											className={cn(
 												"tabular-nums tracking-tight",
-												(
-													cell.column.columnDef.meta as {
-														cellClassName?: string;
-													}
-												)?.cellClassName,
+													cell.column.columnDef.meta?.cellClassName,
 											)}
 										>
 											{flexRender(
@@ -277,7 +276,7 @@ export function DataTable<TData, TValue>({
 											key={footer.id}
 											className={cn(
 												"p-2 tabular-nums tracking-tight",
-												(footer.column.columnDef.meta as any)?.cellClassName,
+												footer.column.columnDef.meta?.cellClassName,
 											)}
 										>
 											{footer.isPlaceholder

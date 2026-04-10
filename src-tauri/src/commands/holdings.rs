@@ -493,21 +493,23 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             let value_eur = value * rate;
 
             // --- 1. ALL-TIME METRICS ---
-            let all_time_local = Performance::calculate(
-                Decimal::ZERO,
-                value,
-                h.all_time.cost.local,
-                h.all_time.fees.local,
-            );
-            // INFO: gain_eur is not the same as gain * rate
-            // Cost side uses historical acquisition rates; value side uses today's rate.
-            // The difference captures both price appreciation and FX movement since purchase.
-            let all_time_eur = Performance::calculate(
-                Decimal::ZERO,
-                value_eur,
-                h.all_time.cost.eur,
-                h.all_time.fees.eur,
-            );
+            let all_time_perf = CurrencyPair {
+                local: Performance::calculate(
+                    Decimal::ZERO,
+                    value,
+                    h.all_time.cost.local,
+                    h.all_time.fees.local,
+                ),
+                // INFO: gain_eur is not the same as gain * rate
+                // Cost side uses historical acquisition rates; value side uses today's rate.
+                // The difference captures both price appreciation and FX movement since purchase.
+                eur: Performance::calculate(
+                    Decimal::ZERO,
+                    value_eur,
+                    h.all_time.cost.eur,
+                    h.all_time.fees.eur,
+                ),
+            };
 
             // --- 2. PERIOD START VALUES ---
             let period_start = if let (Some(start_price), Some(_)) =
@@ -541,7 +543,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             };
 
             // --- 3. PERIOD METRICS ---
-            let period_metrics = if period_start_date.is_some() {
+            let period_perf = if period_start_date.is_some() {
                 CurrencyPair {
                     local: Performance::calculate(
                         period_start.value.local,
@@ -557,10 +559,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                     ),
                 }
             } else {
-                CurrencyPair {
-                    local: all_time_local,
-                    eur: all_time_eur,
-                }
+                all_time_perf
             };
 
             // --- 4. MAP TO ENVELOPE ---
@@ -592,33 +591,29 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                         local: value,
                         eur: value_eur,
                     },
-                    unit_price_basis: NetGross {
-                        net: CurrencyPair {
-                            local: get_basis(all_time_local.metrics.net.cost),
-                            eur: get_basis(all_time_eur.metrics.net.cost),
+                    unit_price_basis: CurrencyPair {
+                        local: NetGross {
+                            net: get_basis(all_time_perf.local.net.cost),
+                            gross: get_basis(all_time_perf.local.gross.cost),
                         },
-                        gross: CurrencyPair {
-                            local: get_basis(h.all_time.cost.local),
+                        eur: NetGross {
+                            net: get_basis(all_time_perf.eur.net.cost),
                             // INFO: unit_price_basis_eur is not the same as unit_price_basis * rate
                             // historical FX rates are used instead of the latest one
-                            eur: get_basis(h.all_time.cost.eur),
+                            gross: get_basis(all_time_perf.eur.gross.cost),
                         },
                     },
                 },
-
                 // Period metrics
                 all_time: PeriodContext {
-                    metrics: CurrencyPair {
-                        local: all_time_local,
-                        eur: all_time_eur,
-                    },
+                    perf: all_time_perf,
                     ..Default::default()
                 },
                 period: PeriodContext {
                     start_quantity: h.period_start_quantity,
                     start_unit_price: period_start.unit_price,
                     start_value: period_start.value,
-                    metrics: period_metrics,
+                    perf: period_perf,
                 },
             })
         })
@@ -629,8 +624,8 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     for h in &envelope_holdings {
         totals.value += h.current.value.eur;
         totals.period_start_value += h.period.start_value.eur;
-        totals.all_time += h.all_time.metrics.eur;
-        totals.period += h.period.metrics.eur;
+        totals.all_time += h.all_time.perf.eur;
+        totals.period += h.period.perf.eur;
     }
     totals.all_time.recalc_pcts(Decimal::ZERO);
     totals.period.recalc_pcts(totals.period_start_value);

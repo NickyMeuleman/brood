@@ -10,8 +10,9 @@ import {
 	PERIODS,
 } from "@/lib/utils.ts";
 import { commands, type Period } from "../../bindings.ts";
-import { columns, normalizeHolding } from "./columns.tsx";
+import { columns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
+import { normalizeHolding } from "./lib.ts";
 
 const HoldingsPage = () => {
 	const [includeFees, setIncludeFees] = useState(true);
@@ -35,23 +36,23 @@ const HoldingsPage = () => {
 		[data?.holdings, includeFees, displayInEur],
 	);
 
-	const totalValue = Number(data?.totals.market_value_eur ?? 0);
+	const totalValue = Number(data?.totals.value ?? 0);
 	const gain = includeFees
-		? Number(data?.totals.gain_with_fees_eur ?? 0)
-		: Number(data?.totals.gain_eur ?? 0);
+		? Number(data?.totals.all_time.net.gain ?? 0)
+		: Number(data?.totals.all_time.gross.gain ?? 0);
 	const periodGain = includeFees
-		? Number(data?.totals.period_gain_with_fees_eur ?? 0)
-		: Number(data?.totals.period_gain_eur ?? 0);
+		? Number(data?.totals.period.net.gain ?? 0)
+		: Number(data?.totals.period.gross.gain ?? 0);
 	const percentageGain = includeFees
-		? Number(data?.totals.pct_gain_with_fees ?? 0)
-		: Number(data?.totals.pct_gain ?? 0);
+		? Number(data?.totals.all_time.net.pct_gain ?? 0)
+		: Number(data?.totals.all_time.gross.pct_gain ?? 0);
 	const periodPercentageGain = includeFees
-		? Number(data?.totals.period_pct_gain_with_fees ?? 0)
-		: Number(data?.totals.period_pct_gain ?? 0);
-	const fees = Number(data?.totals.fees_eur ?? 0);
-	const periodFees = Number(data?.totals.period_fees_eur ?? 0);
-	const feeDrag = Number(data?.totals.fee_drag ?? 0);
-	const periodFeeDrag = Number(data?.totals.period_fee_drag ?? 0);
+		? Number(data?.totals.period.net.pct_gain ?? 0)
+		: Number(data?.totals.period.gross.pct_gain ?? 0);
+	const fees = Number(data?.totals.all_time.fees ?? 0);
+	const periodFees = Number(data?.totals.period.fees ?? 0);
+	const feeDrag = Number(data?.totals.all_time.fee_drag ?? 0);
+	const periodFeeDrag = Number(data?.totals.period.fee_drag ?? 0);
 
 	const isPositive = gain >= 0;
 	const isPeriodPositive = periodGain >= 0;
@@ -71,8 +72,8 @@ const HoldingsPage = () => {
 					className={cn(
 						"flex flex-col justify-between gap-1 rounded-xl p-6",
 						isPositive
-							? "bg-green-50 text-green-800"
-							: "bg-red-50 text-red-800",
+							? "bg-emerald-50 text-emerald-800"
+							: "bg-rose-50 text-rose-800",
 					)}
 				>
 					<div className="flex justify-between">
@@ -83,7 +84,7 @@ const HoldingsPage = () => {
 							variant="outline"
 							className={cn(
 								"bg-inherit text-inherit",
-								isPositive ? "border-green-800" : "border-red-800",
+								isPositive ? "border-emerald-800" : "border-rose-800",
 							)}
 						>
 							{isPositive ? <ArrowUpRight /> : <ArrowDownRight />}
@@ -112,8 +113,8 @@ const HoldingsPage = () => {
 					className={cn(
 						"flex flex-col justify-between gap-1 rounded-xl p-6",
 						isPeriodPositive
-							? "bg-green-50 text-green-800"
-							: "bg-red-50 text-red-800",
+							? "bg-emerald-50 text-emerald-800"
+							: "bg-rose-50 text-rose-800",
 					)}
 				>
 					<div className="flex justify-between">
@@ -124,7 +125,7 @@ const HoldingsPage = () => {
 							variant="outline"
 							className={cn(
 								"bg-inherit text-inherit",
-								isPeriodPositive ? "border-green-800" : "border-red-800",
+								isPeriodPositive ? "border-emerald-800" : "border-rose-800",
 							)}
 						>
 							{isPeriodPositive ? <ArrowUpRight /> : <ArrowDownRight />}

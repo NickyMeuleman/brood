@@ -13,17 +13,54 @@ pub struct Metrics {
     pub cost: Decimal,
     pub gain: Decimal,
     pub pct_gain: Decimal,
-    pub fees: Decimal,
-    pub pct_fees: Decimal,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
-pub struct NetGross {
-    pub gross: Metrics,
-    pub net: Metrics,
+pub struct NetGross<T> {
+    pub gross: T,
+    pub net: T,
 }
 
-impl NetGross {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
+pub struct CurrencyPair<T> {
+    pub local: T,
+    pub eur: T,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
+pub struct Performance {
+    pub gross: Metrics,
+    pub net: Metrics,
+    pub fees: Decimal,
+    // Fees as a fraction of acquisition cost (total_fees_eur / total_cost_eur).
+    // fees and cost share the same executed_at date,
+    // so the FX rate cancels out and both formulations produce identical results.
+    /// fee drag, % of gross cost that needed to be added
+    pub fee_drag: Decimal,
+}
+
+impl Performance {
+    pub fn recalc_pcts(&mut self, start_value: Decimal) {
+        let gross_base = start_value + self.gross.cost;
+        let net_base = start_value + self.net.cost;
+
+        self.gross.pct_gain = if gross_base.is_zero() {
+            Decimal::ZERO
+        } else {
+            self.gross.gain / gross_base
+        };
+        self.net.pct_gain = if net_base.is_zero() {
+            Decimal::ZERO
+        } else {
+            self.net.gain / net_base
+        };
+        self.fee_drag = if self.gross.cost.is_zero() {
+            Decimal::ZERO
+        } else {
+            self.fees / self.gross.cost
+        };
+    }
+
     pub fn calculate(
         start_value: Decimal,
         end_value: Decimal,
@@ -58,34 +95,32 @@ impl NetGross {
                 cost: gross_cost,
                 gain: gross_gain,
                 pct_gain: gross_pct_gain,
-                fees,
-                pct_fees,
             },
             net: Metrics {
                 cost: net_cost,
                 gain: net_gain,
                 pct_gain: net_pct_gain,
-                fees,
-                pct_fees,
             },
+            fees,
+            fee_drag: pct_fees,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
-pub struct CurrencyPair {
-    pub local: NetGross,
-    pub eur: NetGross,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+pub struct Snapshot {
+    pub quantity: Decimal,
+    pub unit_price: CurrencyPair<Decimal>,
+    pub value: CurrencyPair<Decimal>,
+    pub unit_price_basis: CurrencyPair<NetGross<Decimal>>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
 pub struct PeriodContext {
     pub start_quantity: Decimal,
-    pub start_unit_price: Option<Decimal>,
-    pub start_unit_price_eur: Option<Decimal>,
-    pub start_market_value: Decimal,
-    pub start_market_value_eur: Decimal,
-    pub metrics: CurrencyPair,
+    pub start_unit_price: Option<CurrencyPair<Decimal>>,
+    pub start_value: CurrencyPair<Decimal>,
+    pub perf: CurrencyPair<Performance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -139,14 +174,15 @@ impl AddAssign for Metrics {
     fn add_assign(&mut self, other: Self) {
         self.cost += other.cost;
         self.gain += other.gain;
-        self.fees += other.fees;
-        // NOTE: don't add pct_gain or pct_fees here because percentages can't be summed.
+        // NOTE: don't add pct_gain here because percentages can't be summed.
     }
 }
 
-impl AddAssign for NetGross {
+impl AddAssign for Performance {
     fn add_assign(&mut self, other: Self) {
         self.gross += other.gross;
         self.net += other.net;
+        self.fees += other.fees;
+        // NOTE: don't add pct_fees here because percentages can't be summed.
     }
 }
