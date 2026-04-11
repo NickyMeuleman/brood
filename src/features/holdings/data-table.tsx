@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, PERIOD_LABEL } from "@/lib/utils";
+import { Label } from "./Label";
 
 export interface DisplayControls {
 	includeFees: boolean;
@@ -140,7 +141,7 @@ export function DataTable<TData, TValue>({
 						<Settings2 className="h-4 w-4" />
 						<span className="hidden sm:inline">Columns</span>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-40">
+					<DropdownMenuContent align="end" className="w-auto">
 						<DropdownMenuGroup>
 							<DropdownMenuLabel>Grouped</DropdownMenuLabel>
 							{table
@@ -152,7 +153,8 @@ export function DataTable<TData, TValue>({
 										column.id.startsWith("agg"),
 								)
 								.map((column) => {
-									const label = column.columnDef.meta?.label ?? column.id;
+									const { label, showPeriod } = column.columnDef.meta ?? {};
+									const period = table.options.meta?.period;
 
 									return (
 										<DropdownMenuCheckboxItem
@@ -163,7 +165,11 @@ export function DataTable<TData, TValue>({
 												column.toggleVisibility(!!value)
 											}
 										>
-											{label}
+											<Label
+												label={label}
+												period={period}
+												showPeriod={showPeriod}
+											/>
 										</DropdownMenuCheckboxItem>
 									);
 								})}
@@ -180,7 +186,8 @@ export function DataTable<TData, TValue>({
 										!column.id.startsWith("agg"),
 								)
 								.map((column) => {
-									const label = column.columnDef.meta?.label ?? column.id;
+									const { label, showPeriod } = column.columnDef.meta ?? {};
+									const period = table.options.meta?.period;
 
 									return (
 										<DropdownMenuCheckboxItem
@@ -191,7 +198,11 @@ export function DataTable<TData, TValue>({
 												column.toggleVisibility(!!value)
 											}
 										>
-											{label}
+											<Label
+												label={label}
+												period={period}
+												showPeriod={showPeriod}
+											/>
 										</DropdownMenuCheckboxItem>
 									);
 								})}
@@ -217,9 +228,7 @@ export function DataTable<TData, TValue>({
 									return (
 										<TableHead
 											key={header.id}
-											className={
-												header.column.columnDef.meta?.cellClassName
-											}
+											className={header.column.columnDef.meta?.cellClassName}
 										>
 											{header.isPlaceholder
 												? null
@@ -245,7 +254,7 @@ export function DataTable<TData, TValue>({
 											key={cell.id}
 											className={cn(
 												"tabular-nums tracking-tight",
-													cell.column.columnDef.meta?.cellClassName,
+												cell.column.columnDef.meta?.cellClassName,
 											)}
 										>
 											{flexRender(

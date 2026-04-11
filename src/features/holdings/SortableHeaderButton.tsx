@@ -1,30 +1,9 @@
 import type { HeaderContext } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
-import type { Period } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { cn, PERIOD_LABEL } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { HoldingRow } from "./columns";
-
-function Label({
-	label,
-	period,
-	showPeriod,
-}: {
-	label?: string;
-	period?: Period;
-	showPeriod?: boolean;
-}) {
-	return (
-		<p className="flex items-baseline gap-0.5">
-			<span>{label}</span>
-			{showPeriod && period && period !== "AllTime" ? (
-				<span className="text-muted-foreground text-xs uppercase tracking-widest">
-					({PERIOD_LABEL[period]})
-				</span>
-			) : null}
-		</p>
-	);
-}
+import { Label } from "./Label";
 
 export function SortableHeaderButton<TValue>({
 	column,
