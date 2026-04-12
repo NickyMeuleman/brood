@@ -74,7 +74,7 @@ const ChartPage = () => {
 	});
 
 	return (
-		<div className="m-auto max-w-3/4 p-5">
+		<div className="mx-auto w-full p-5">
 			<Card className="pt-0">
 				<CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
 					<div className="grid flex-1 gap-1">
