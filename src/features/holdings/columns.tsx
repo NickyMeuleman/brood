@@ -1,4 +1,4 @@
-import { createColumnHelper } from "@tanstack/react-table";
+import { type ColumnDef, createColumnHelper } from "@tanstack/react-table";
 import { cn, formatCurrency, formatPercentage } from "@/lib/utils";
 import { ActionsCell } from "./ActionsCell";
 import { AggIdentityCell } from "./AggIdentityCell";
@@ -333,5 +333,5 @@ export const columns = [
 		meta: { cellClassName: "w-2" },
 		cell: ActionsCell,
 	}),
-	// https://github.com/TanStack/table/issues/4382
-];
+] as ColumnDef<HoldingRow>[];
+// https://github.com/TanStack/table/issues/4382

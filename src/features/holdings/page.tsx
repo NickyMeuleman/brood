@@ -1,23 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import {
 	cn,
 	formatCurrency,
 	formatPercentage,
 	PERIOD_LABEL,
-	PERIODS,
 } from "@/lib/utils.ts";
-import { commands, type Period } from "../../bindings.ts";
+import { useUIStore } from "@/stores/ui.ts";
+import { commands } from "../../bindings.ts";
 import { columns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 import { normalizeHolding } from "./lib.ts";
 
 const HoldingsPage = () => {
-	const [includeFees, setIncludeFees] = useState(true);
-	const [displayInEur, setDisplayInEur] = useState(false);
-	const [period, setPeriod] = useState<Period>("AllTime");
+	const { includeFees, displayInEur, period } = useUIStore();
 
 	const { data } = useQuery({
 		queryKey: ["holdings", period],
@@ -157,16 +155,7 @@ const HoldingsPage = () => {
 				<DataTable
 					columns={columns}
 					data={tableData}
-					meta={{ totals: data.totals }}
-					display={{
-						includeFees,
-						onIncludeFeesChange: setIncludeFees,
-						displayInEur,
-						onDisplayInEurChange: setDisplayInEur,
-						periods: PERIODS,
-						period,
-						onPeriodChange: setPeriod,
-					}}
+					meta={{ totals: data.totals, period }}
 				/>
 			) : (
 				"Loading"

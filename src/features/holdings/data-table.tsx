@@ -3,14 +3,10 @@ import {
 	flexRender,
 	getCoreRowModel,
 	getSortedRowModel,
-	type SortingState,
 	type TableMeta,
 	useReactTable,
-	type VisibilityState,
 } from "@tanstack/react-table";
 import { ArrowLeftRightIcon, Settings2 } from "lucide-react";
-import { useState } from "react";
-import type { Period } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -33,45 +29,33 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn, PERIOD_LABEL } from "@/lib/utils";
+import { cn, PERIOD_LABEL, PERIODS } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui";
 import { Label } from "./Label";
-
-export interface DisplayControls {
-	includeFees: boolean;
-	onIncludeFeesChange: (v: boolean) => void;
-	displayInEur: boolean;
-	onDisplayInEurChange: (v: boolean) => void;
-	periods: Period[];
-	period: Period;
-	onPeriodChange: (v: Period) => void;
-}
 
 interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
 	data: TData[];
 	meta?: TableMeta<TData>;
-	display: DisplayControls;
 }
 
 export function DataTable<TData, TValue>({
 	columns,
 	data,
 	meta,
-	display,
 }: DataTableProps<TData, TValue>) {
-	const [sorting, setSorting] = useState<SortingState>([
-		{ id: "agg_identity", desc: false },
-	]);
-	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-		() =>
-			columns.reduce((acc, col) => {
-				const id = col.id ?? (col as { accessorKey?: string }).accessorKey;
-				if (id && col.meta?.hideByDefault) {
-					acc[id] = false;
-				}
-				return acc;
-			}, {} as VisibilityState),
-	);
+	const {
+		includeFees,
+		setIncludeFees,
+		displayInEur,
+		setDisplayInEur,
+		period,
+		setPeriod,
+		sorting,
+		setSorting,
+		columnVisibility,
+		setColumnVisibility,
+	} = useUIStore();
 
 	const table = useReactTable({
 		data,
@@ -81,18 +65,15 @@ export function DataTable<TData, TValue>({
 		onSortingChange: setSorting,
 		onColumnVisibilityChange: setColumnVisibility,
 		state: { sorting, columnVisibility },
-		meta: {
-			...meta,
-			period: display.period,
-		},
+		meta,
 	});
 
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex items-center justify-between gap-4">
-				<Tabs value={display.period} onValueChange={display.onPeriodChange}>
+				<Tabs value={period} onValueChange={setPeriod}>
 					<TabsList className="bg-muted p-1 text-muted-foreground">
-						{display.periods.map((period) => (
+						{PERIODS.map((period) => (
 							<TabsTrigger
 								key={period}
 								value={period}
@@ -107,8 +88,8 @@ export function DataTable<TData, TValue>({
 					<Field orientation="horizontal" className="w-auto">
 						<Switch
 							id="toolbar-fees-toggle"
-							checked={display.includeFees}
-							onCheckedChange={display.onIncludeFeesChange}
+							checked={includeFees}
+							onCheckedChange={setIncludeFees}
 						/>
 						<FieldLabel
 							htmlFor="toolbar-fees-toggle"
@@ -120,8 +101,8 @@ export function DataTable<TData, TValue>({
 					<Field orientation="horizontal" className="w-auto">
 						<Switch
 							id="toolbar-eur-toggle"
-							checked={display.displayInEur}
-							onCheckedChange={display.onDisplayInEurChange}
+							checked={displayInEur}
+							onCheckedChange={setDisplayInEur}
 						/>
 						<FieldLabel
 							htmlFor="toolbar-eur-toggle"
@@ -211,7 +192,7 @@ export function DataTable<TData, TValue>({
 				</DropdownMenu>
 			</div>
 
-			{display.displayInEur && (
+			{displayInEur && (
 				<p className="flex items-center gap-1.5 text-muted-foreground text-xs">
 					<ArrowLeftRightIcon className="h-3 w-3" />
 					Values converted from local currency using the latest stored FX rate.
