@@ -2,13 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import Holdings from "@/features/holdings/page.tsx";
 
 export const Route = createFileRoute("/")({
-	component: Index,
+	component: RouteComponent,
+	staticData: { title: "Holdings" },
 });
 
-function Index() {
-	return (
-		<div className="pt-4">
-			<Holdings />
-		</div>
-	);
+function RouteComponent() {
+	return <Holdings />;
 }

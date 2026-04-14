@@ -56,7 +56,7 @@ const HoldingsPage = () => {
 	const isPeriodPositive = periodGain >= 0;
 
 	return (
-		<div className="@container/main container mx-auto space-y-6 px-4 tabular-nums">
+		<div className="container mx-auto space-y-6 tabular-nums">
 			<div className="grid grid-cols-3 gap-3">
 				<div className="row-span-2 flex flex-col justify-between gap-1 rounded-xl bg-accent p-6 text-accent-foreground">
 					<p className="font-bold text-xs uppercase tracking-widest">

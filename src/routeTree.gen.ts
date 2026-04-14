@@ -9,24 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as PeopleRouteImport } from './routes/people'
-import { Route as ChartRouteImport } from './routes/chart'
-import { Route as AdminRouteImport } from './routes/admin'
+import { Route as HistoryRouteImport } from './routes/history'
+import { Route as TradeRouteRouteImport } from './routes/trade/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TradeIndexRouteImport } from './routes/trade/index'
+import { Route as TradeSellRouteImport } from './routes/trade/sell'
+import { Route as TradeBuyRouteImport } from './routes/trade/buy'
 
-const PeopleRoute = PeopleRouteImport.update({
-  id: '/people',
-  path: '/people',
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChartRoute = ChartRouteImport.update({
-  id: '/chart',
-  path: '/chart',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const TradeRouteRoute = TradeRouteRouteImport.update({
+  id: '/trade',
+  path: '/trade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -34,62 +31,87 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TradeIndexRoute = TradeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TradeRouteRoute,
+} as any)
+const TradeSellRoute = TradeSellRouteImport.update({
+  id: '/sell',
+  path: '/sell',
+  getParentRoute: () => TradeRouteRoute,
+} as any)
+const TradeBuyRoute = TradeBuyRouteImport.update({
+  id: '/buy',
+  path: '/buy',
+  getParentRoute: () => TradeRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/chart': typeof ChartRoute
-  '/people': typeof PeopleRoute
+  '/trade': typeof TradeRouteRouteWithChildren
+  '/history': typeof HistoryRoute
+  '/trade/buy': typeof TradeBuyRoute
+  '/trade/sell': typeof TradeSellRoute
+  '/trade/': typeof TradeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/chart': typeof ChartRoute
-  '/people': typeof PeopleRoute
+  '/history': typeof HistoryRoute
+  '/trade/buy': typeof TradeBuyRoute
+  '/trade/sell': typeof TradeSellRoute
+  '/trade': typeof TradeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/chart': typeof ChartRoute
-  '/people': typeof PeopleRoute
+  '/trade': typeof TradeRouteRouteWithChildren
+  '/history': typeof HistoryRoute
+  '/trade/buy': typeof TradeBuyRoute
+  '/trade/sell': typeof TradeSellRoute
+  '/trade/': typeof TradeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/chart' | '/people'
+  fullPaths:
+    | '/'
+    | '/trade'
+    | '/history'
+    | '/trade/buy'
+    | '/trade/sell'
+    | '/trade/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/chart' | '/people'
-  id: '__root__' | '/' | '/admin' | '/chart' | '/people'
+  to: '/' | '/history' | '/trade/buy' | '/trade/sell' | '/trade'
+  id:
+    | '__root__'
+    | '/'
+    | '/trade'
+    | '/history'
+    | '/trade/buy'
+    | '/trade/sell'
+    | '/trade/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
-  ChartRoute: typeof ChartRoute
-  PeopleRoute: typeof PeopleRoute
+  TradeRouteRoute: typeof TradeRouteRouteWithChildren
+  HistoryRoute: typeof HistoryRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/people': {
-      id: '/people'
-      path: '/people'
-      fullPath: '/people'
-      preLoaderRoute: typeof PeopleRouteImport
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/chart': {
-      id: '/chart'
-      path: '/chart'
-      fullPath: '/chart'
-      preLoaderRoute: typeof ChartRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/trade': {
+      id: '/trade'
+      path: '/trade'
+      fullPath: '/trade'
+      preLoaderRoute: typeof TradeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -99,14 +121,50 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/trade/': {
+      id: '/trade/'
+      path: '/'
+      fullPath: '/trade/'
+      preLoaderRoute: typeof TradeIndexRouteImport
+      parentRoute: typeof TradeRouteRoute
+    }
+    '/trade/sell': {
+      id: '/trade/sell'
+      path: '/sell'
+      fullPath: '/trade/sell'
+      preLoaderRoute: typeof TradeSellRouteImport
+      parentRoute: typeof TradeRouteRoute
+    }
+    '/trade/buy': {
+      id: '/trade/buy'
+      path: '/buy'
+      fullPath: '/trade/buy'
+      preLoaderRoute: typeof TradeBuyRouteImport
+      parentRoute: typeof TradeRouteRoute
+    }
   }
 }
 
+interface TradeRouteRouteChildren {
+  TradeBuyRoute: typeof TradeBuyRoute
+  TradeSellRoute: typeof TradeSellRoute
+  TradeIndexRoute: typeof TradeIndexRoute
+}
+
+const TradeRouteRouteChildren: TradeRouteRouteChildren = {
+  TradeBuyRoute: TradeBuyRoute,
+  TradeSellRoute: TradeSellRoute,
+  TradeIndexRoute: TradeIndexRoute,
+}
+
+const TradeRouteRouteWithChildren = TradeRouteRoute._addFileChildren(
+  TradeRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
-  ChartRoute: ChartRoute,
-  PeopleRoute: PeopleRoute,
+  TradeRouteRoute: TradeRouteRouteWithChildren,
+  HistoryRoute: HistoryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

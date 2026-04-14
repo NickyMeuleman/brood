@@ -131,7 +131,7 @@
 
 /* modern minimal from tweakcn */
 :root {
-  --background: oklch(1.0000 0 0);
+  --background: oklch(0.9998 0 0);
   --foreground: oklch(0.3211 0 0);
   --card: oklch(1.0000 0 0);
   --card-foreground: oklch(0.3211 0 0);
