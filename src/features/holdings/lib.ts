@@ -13,24 +13,27 @@ export function normalizeHolding(
 	const cur = <T>(pair: { local: T; eur: T }, useEur: boolean): T =>
 		useEur ? pair.eur : pair.local;
 
+	const toNum = (v: string | null): number | null =>
+		v === null ? null : Number(v);
+
 	const resolvePerf = (ctx: PeriodContext, useEur: boolean) => {
 		const perf = cur(ctx.perf, useEur);
 		const lens = pick(perf);
 		return {
-			cost: Number(lens.cost),
-			gain: Number(lens.gain),
-			pct_gain: Number(lens.pct_gain),
-			fees: Number(perf.fees),
-			fee_drag: Number(ctx.perf.eur.fee_drag), // Drag is always EUR, FX cancels out
+			cost: toNum(lens.cost),
+			gain: toNum(lens.gain),
+			pct_gain: toNum(lens.pct_gain),
+			fees: toNum(perf.fees),
+			fee_drag: toNum(ctx.perf.eur.fee_drag), // Drag is always EUR, FX cancels out
 		};
 	};
 
 	const resolveCurrent = (snap: Snapshot, useEur: boolean) => {
 		return {
-			quantity: Number(snap.quantity),
-			unit_price: Number(cur(snap.unit_price, useEur)),
-			value: Number(cur(snap.value, useEur)),
-			unit_price_basis: Number(pick(cur(snap.unit_price_basis, useEur))),
+			quantity: toNum(snap.quantity),
+			unit_price: toNum(cur(snap.unit_price, useEur)),
+			value: toNum(cur(snap.value, useEur)),
+			unit_price_basis: toNum(pick(cur(snap.unit_price_basis, useEur))),
 		};
 	};
 

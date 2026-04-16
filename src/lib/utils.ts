@@ -6,7 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(val: number, currency = "EUR", opt = {}) {
+export function formatCurrency(
+	val: number,
+	currency: string = "EUR",
+	opt: Intl.NumberFormatOptions = {},
+) {
 	return new Intl.NumberFormat("nl-BE", {
 		style: "currency",
 		currency,
@@ -14,10 +18,14 @@ export function formatCurrency(val: number, currency = "EUR", opt = {}) {
 	}).format(val);
 }
 
-export function formatPercentage(val: number) {
+export function formatPercentage(
+	val: number,
+	opt: Intl.NumberFormatOptions = {},
+) {
 	return new Intl.NumberFormat("nl-BE", {
 		style: "percent",
 		maximumSignificantDigits: 3,
+		...opt,
 	}).format(val);
 }
 
@@ -25,10 +33,9 @@ const symbolCache = new Map<string, string>();
 export const getCurrencySymbol = (currency: string) => {
 	if (symbolCache.has(currency)) return symbolCache.get(currency)!;
 	const symbol =
-		new Intl.NumberFormat("en", {
+		new Intl.NumberFormat("nl-BE", {
 			style: "currency",
 			currency,
-			minimumFractionDigits: 0,
 		})
 			.formatToParts(0)
 			.find((p) => p.type === "currency")?.value ?? currency;

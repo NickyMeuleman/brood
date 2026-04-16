@@ -8,11 +8,21 @@ use specta::Type;
 use sqlx::{Pool, Sqlite};
 use std::ops::AddAssign;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 pub struct Metrics {
     pub cost: Decimal,
-    pub gain: Decimal,
-    pub pct_gain: Decimal,
+    pub gain: Option<Decimal>,
+    pub pct_gain: Option<Decimal>,
+}
+/// Manual implementation to start options at Some(0) instead of None
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            cost: Decimal::ZERO,
+            gain: Some(Decimal::ZERO),
+            pct_gain: Some(Decimal::ZERO),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
@@ -40,20 +50,17 @@ pub struct Performance {
 }
 
 impl Performance {
-    pub fn recalc_pcts(&mut self, start_value: Decimal) {
-        let gross_base = start_value + self.gross.cost;
-        let net_base = start_value + self.net.cost;
+    pub fn recalc_pcts(&mut self, start_value: Option<Decimal>) {
+        let gross_base = start_value.map(|n| n + self.gross.cost);
+        let net_base = start_value.map(|n| n + self.net.cost);
 
-        self.gross.pct_gain = if gross_base.is_zero() {
-            Decimal::ZERO
-        } else {
-            self.gross.gain / gross_base
+        let get_pct_gain = |gain: Option<Decimal>, base: Option<Decimal>| match (gain, base) {
+            (Some(gain), Some(base)) if !base.is_zero() => Some(gain / base),
+            _ => None,
         };
-        self.net.pct_gain = if net_base.is_zero() {
-            Decimal::ZERO
-        } else {
-            self.net.gain / net_base
-        };
+
+        self.gross.pct_gain = get_pct_gain(self.gross.gain, gross_base);
+        self.net.pct_gain = get_pct_gain(self.net.gain, net_base);
         self.fee_drag = if self.gross.cost.is_zero() {
             Decimal::ZERO
         } else {
@@ -62,27 +69,25 @@ impl Performance {
     }
 
     pub fn calculate(
-        start_value: Decimal,
+        start_value: Option<Decimal>,
         end_value: Decimal,
         gross_cost: Decimal,
         fees: Decimal,
     ) -> Self {
-        let gross_gain = end_value - start_value - gross_cost;
-        let gross_base = start_value + gross_cost;
-        let gross_pct_gain = if gross_base.is_zero() {
-            Decimal::ZERO
-        } else {
-            gross_gain / gross_base
+        let gross_gain = start_value.map(|n| end_value - n - gross_cost);
+        let gross_base = start_value.map(|n| n + gross_cost);
+
+        let get_pct_gain = |gain: Option<Decimal>, base: Option<Decimal>| match (gain, base) {
+            (Some(gain), Some(base)) if !base.is_zero() => Some(gain / base),
+            _ => None,
         };
 
+        let gross_pct_gain = get_pct_gain(gross_gain, gross_base);
+
         let net_cost = gross_cost + fees;
-        let net_gain = gross_gain - fees;
-        let net_base = start_value + net_cost;
-        let net_pct_gain = if net_base.is_zero() {
-            Decimal::ZERO
-        } else {
-            net_gain / net_base
-        };
+        let net_gain = gross_gain.map(|n| n - fees);
+        let net_base = start_value.map(|n| n + net_cost);
+        let net_pct_gain = get_pct_gain(net_gain, net_base);
 
         let pct_fees = if gross_cost.is_zero() {
             Decimal::ZERO
@@ -119,11 +124,11 @@ pub struct Snapshot {
 pub struct PeriodContext {
     pub start_quantity: Decimal,
     pub start_unit_price: Option<CurrencyPair<Decimal>>,
-    pub start_value: CurrencyPair<Decimal>,
+    pub start_value: Option<CurrencyPair<Decimal>>,
     pub perf: CurrencyPair<Performance>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 pub enum Period {
     FiveDays,
     OneMonth,
@@ -173,7 +178,7 @@ pub async fn get_rate(
 impl AddAssign for Metrics {
     fn add_assign(&mut self, other: Self) {
         self.cost += other.cost;
-        self.gain += other.gain;
+        self.gain = self.gain.zip(other.gain).map(|(a, b)| a + b);
         // NOTE: don't add pct_gain here because percentages can't be summed.
     }
 }

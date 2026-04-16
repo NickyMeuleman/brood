@@ -1,33 +1,67 @@
 import type { HeaderContext } from "@tanstack/react-table";
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency, formatPercentage } from "@/lib/utils";
 import type { HoldingRow } from "./columns";
 
 export function AggPerformanceFooter({
 	table,
-}: HeaderContext<HoldingRow, number>) {
+	tfKey,
+}: HeaderContext<HoldingRow, number> & { tfKey: "period" | "all_time" }) {
 	const [gain, cost] = table
 		.getFilteredRowModel()
-		.rows.reduce(
-			([gain, cost], r) => [
-				gain + r.original.eur.period.gain,
-				cost + r.original.eur.period.cost,
-			],
+		.rows.reduce<[number | null, number | null]>(
+			(acc, r) => {
+				const g = r.original.eur[tfKey].gain;
+				const c = r.original.eur[tfKey].cost;
+
+				// If either val is null the whole result becomes null
+				if (g === null || c === null) {
+					return [null, null];
+				}
+
+				// keep acc null
+				if (acc[0] === null || acc[1] === null) {
+					return [null, null];
+				}
+
+				return [acc[0] + g, acc[1] + c];
+			},
 			[0, 0],
 		);
-	const percentage = cost !== 0 ? gain / cost : 0;
+	const percentage =
+		gain === null || cost === null || cost === 0 ? null : gain / cost;
+	const isPos = gain !== null && gain >= 0;
+
+	if (gain === null || percentage === null) {
+		return (
+			<p className="text-end font-normal text-muted-foreground text-sm">
+				Missing data
+			</p>
+		);
+	}
 
 	return (
 		<div
 			className={cn(
 				"flex place-content-end items-center gap-1",
-				gain >= 0 ? "text-emerald-600" : "text-rose-600",
+				isPos ? "text-emerald-700" : "text-rose-800",
 			)}
 		>
-			{gain >= 0 ? <ArrowUpRight /> : <ArrowDownRight />}
 			<div className="flex flex-col place-items-end gap-1">
-				<p className="font-medium text-base">{formatCurrency(gain)}</p>
-				<p className="font-normal text-sm">{formatPercentage(percentage)}</p>
+				<p className="font-medium text-base">
+					{formatCurrency(gain, "EUR", { signDisplay: "exceptZero" })}
+				</p>
+				<Badge
+					variant="ghost"
+					className={cn(
+						"font-normal text-sm",
+						isPos ? "bg-emerald-50" : "bg-rose-50",
+					)}
+				>
+					{formatPercentage(percentage, {
+						signDisplay: "exceptZero",
+					})}
+				</Badge>
 			</div>
 		</div>
 	);

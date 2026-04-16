@@ -5,7 +5,12 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatPercentage, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
+import {
+	cn,
+	formatPercentage,
+	getCurrencySymbol,
+	MIC_LABEL,
+} from "@/lib/utils";
 import type { HoldingRow } from "./columns";
 import { TruncatedTooltip } from "./TruncatedTooltip";
 
@@ -60,25 +65,25 @@ export function AggIdentityCell({
 					</div>
 				</TooltipContent>
 			</Tooltip>
-			<div className="flex min-w-0 flex-1 flex-col gap-px">
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<TruncatedTooltip>{row.original.name}</TruncatedTooltip>
-				<div className="flex items-center gap-1.5 whitespace-nowrap">
-					<span className="font-mono text-muted-foreground text-sm">
-						{row.original.ticker}
-					</span>
-					<span className="text-muted-foreground/40 text-xs">·</span>
+				<div className="flex items-center gap-1.5 whitespace-nowrap font-normal text-muted-foreground text-sm">
 					<Badge
-						variant="outline"
-						className="flex h-5 gap-0.5 rounded px-1 font-normal text-muted-foreground text-xs"
-					>
-						<span>{exchangeLabel}</span>
-						{isForeignCurrency && (
-							<>
-								<span className="text-muted-foreground/40">·</span>
-								<span>{currencySymbol}</span>
-							</>
+						variant="ghost"
+						className={cn(
+							"bg-secondary font-mono text-secondary-foreground text-sm tracking-wider",
 						)}
+					>
+						{row.original.ticker}
 					</Badge>
+					<span className="opacity-60">·</span>
+					<span>{exchangeLabel}</span>
+					{isForeignCurrency && (
+						<>
+							<span className="opacity-60">·</span>
+							<span>{currencySymbol}</span>
+						</>
+					)}
 				</div>
 			</div>
 		</div>

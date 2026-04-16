@@ -61,12 +61,23 @@ struct EnvelopeHolding {
 }
 
 /// Portfolio-level EUR aggregates.
-#[derive(Debug, Clone, Serialize, Type, Default)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct TotalsEUR {
     value: Decimal,
-    period_start_value: Decimal,
+    period_start_value: Option<Decimal>,
     all_time: Performance,
     period: Performance,
+}
+/// manual impl to start at Some(0) instead of None (start valid at 0 instead of invalid)
+impl Default for TotalsEUR {
+    fn default() -> Self {
+        Self {
+            value: Decimal::ZERO,
+            period_start_value: Some(Decimal::ZERO),
+            all_time: Performance::default(),
+            period: Performance::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -91,7 +102,7 @@ struct TradeFeeAgg {
 
 #[derive(Debug, Clone, Copy, Default)]
 struct PeriodStart {
-    value: CurrencyPair<Decimal>,
+    value: Option<CurrencyPair<Decimal>>,
     unit_price: Option<CurrencyPair<Decimal>>,
 }
 
@@ -495,7 +506,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             // --- 1. ALL-TIME METRICS ---
             let all_time_perf = CurrencyPair {
                 local: Performance::calculate(
-                    Decimal::ZERO,
+                    Some(Decimal::ZERO),
                     value,
                     h.all_time.cost.local,
                     h.all_time.fees.local,
@@ -504,7 +515,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                 // Cost side uses historical acquisition rates; value side uses today's rate.
                 // The difference captures both price appreciation and FX movement since purchase.
                 eur: Performance::calculate(
-                    Decimal::ZERO,
+                    Some(Decimal::ZERO),
                     value_eur,
                     h.all_time.cost.eur,
                     h.all_time.fees.eur,
@@ -512,47 +523,65 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             };
 
             // --- 2. PERIOD START VALUES ---
-            let period_start = if let (Some(start_price), Some(_)) =
-                (h.period_start_unit_price, period_start_date)
-            {
-                let period_start_rate = if h.currency_code == "EUR" {
-                    Decimal::ONE
-                } else {
-                    period_start_rates
-                        .get(&h.currency_code)
-                        .copied()
-                        .ok_or_else(|| {
-                            AppError::Database(format!(
-                                "No period start FX rate for {} - price exists but FX missing",
-                                h.currency_code
-                            ))
-                        })?
-                };
-                PeriodStart {
-                    value: CurrencyPair {
-                        local: h.period_start_quantity * start_price,
-                        eur: h.period_start_quantity * start_price * period_start_rate,
-                    },
-                    unit_price: Some(CurrencyPair {
-                        local: start_price,
-                        eur: start_price * period_start_rate,
-                    }),
+            let period_start = match (
+                period_start_date,
+                h.period_start_quantity.is_zero(),
+                h.period_start_unit_price,
+            ) {
+                // all time
+                (None, _, _) => PeriodStart {
+                    value: None,
+                    unit_price: None,
+                },
+                // period starting at 0 shares, price is irrelevant, value is Some(0)
+                (Some(_), true, _) => PeriodStart {
+                    value: Some(CurrencyPair::default()),
+                    unit_price: None,
+                },
+                // period with starting shares and price
+                (Some(_), false, Some(start_price)) => {
+                    let period_start_rate = if h.currency_code == "EUR" {
+                        Decimal::ONE
+                    } else {
+                        period_start_rates
+                            .get(&h.currency_code)
+                            .copied()
+                            .ok_or_else(|| {
+                                AppError::Database(format!(
+                                    "No period start FX rate for {} - price exists but FX missing",
+                                    h.currency_code
+                                ))
+                            })?
+                    };
+                    PeriodStart {
+                        value: Some(CurrencyPair {
+                            local: h.period_start_quantity * start_price,
+                            eur: h.period_start_quantity * start_price * period_start_rate,
+                        }),
+                        unit_price: Some(CurrencyPair {
+                            local: start_price,
+                            eur: start_price * period_start_rate,
+                        }),
+                    }
                 }
-            } else {
-                PeriodStart::default()
+                // period with starting shares but missing price
+                (Some(_), false, None) => PeriodStart {
+                    value: None,
+                    unit_price: None,
+                },
             };
 
             // --- 3. PERIOD METRICS ---
             let period_perf = if period_start_date.is_some() {
                 CurrencyPair {
                     local: Performance::calculate(
-                        period_start.value.local,
+                        period_start.value.map(|pair| pair.local),
                         value,
                         h.period.cost.local,
                         h.period.fees.local,
                     ),
                     eur: Performance::calculate(
-                        period_start.value.eur,
+                        period_start.value.map(|pair| pair.eur),
                         value_eur,
                         h.period.cost.eur,
                         h.period.fees.eur,
@@ -623,11 +652,14 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let mut totals = TotalsEUR::default();
     for h in &envelope_holdings {
         totals.value += h.current.value.eur;
-        totals.period_start_value += h.period.start_value.eur;
+        totals.period_start_value = totals
+            .period_start_value
+            .zip(h.period.start_value)
+            .map(|(a, b)| a + b.eur);
         totals.all_time += h.all_time.perf.eur;
         totals.period += h.period.perf.eur;
     }
-    totals.all_time.recalc_pcts(Decimal::ZERO);
+    totals.all_time.recalc_pcts(Some(Decimal::ZERO));
     totals.period.recalc_pcts(totals.period_start_value);
 
     Ok(Envelope {

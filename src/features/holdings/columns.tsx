@@ -42,11 +42,18 @@ const aggColumns = [
 		footer: AggValueFooter,
 	}),
 	columnHelper.accessor((row) => row.display.period.gain, {
-		id: "agg_performance",
+		id: "agg_performance_period",
 		meta: { label: "Performance", showPeriod: true, align: "end" },
 		header: SortableHeaderButton,
-		cell: AggPerformanceCell,
-		footer: AggPerformanceFooter,
+		cell: (props) => <AggPerformanceCell {...props} tfKey="period" />,
+		footer: (props) => <AggPerformanceFooter {...props} tfKey="period" />,
+	}),
+	columnHelper.accessor((row) => row.display.all_time.gain, {
+		id: "agg_performance_all_time",
+		meta: { label: "Performance", align: "end", hideByDefault: true },
+		header: SortableHeaderButton,
+		cell: (props) => <AggPerformanceCell {...props} tfKey="all_time" />,
+		footer: (props) => <AggPerformanceFooter {...props} tfKey="all_time" />,
 	}),
 ];
 

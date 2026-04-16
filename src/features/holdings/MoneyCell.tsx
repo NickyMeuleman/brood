@@ -13,6 +13,7 @@ export function MoneyCell({
 	originalValue,
 	originalCurrency,
 	className,
+	numFormatOpts,
 }: {
 	value: number;
 	currency: string;
@@ -20,11 +21,12 @@ export function MoneyCell({
 	originalValue?: number;
 	originalCurrency?: string;
 	className?: string;
+	numFormatOpts?: Intl.NumberFormatOptions;
 }) {
 	if (!isConverted) {
 		return (
 			<div className={cn("text-right font-medium", className)}>
-				{formatCurrency(value, currency)}
+				{formatCurrency(value, currency, numFormatOpts)}
 			</div>
 		);
 	}
@@ -41,14 +43,18 @@ export function MoneyCell({
 					>
 						<ArrowLeftRight className="inline h-3 w-3 shrink-0 text-muted-foreground/50" />
 						<span className="underline decoration-muted-foreground/40 decoration-dashed underline-offset-2">
-							{formatCurrency(value, currency)}
+							{formatCurrency(value, currency, numFormatOpts)}
 						</span>
 					</div>
 				}
 			/>
 			<TooltipContent side="top" className="text-xs">
 				<p className="font-medium">
-					{formatCurrency(originalValue ?? 0, originalCurrency ?? "EUR")}
+					{formatCurrency(
+						originalValue ?? 0,
+						originalCurrency ?? "EUR",
+						numFormatOpts,
+					)}
 					<span className="text-muted-foreground"> in {originalCurrency}</span>
 				</p>
 			</TooltipContent>

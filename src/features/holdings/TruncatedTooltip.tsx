@@ -57,7 +57,10 @@ export const TruncatedTooltip = ({ children }: { children: string }) => {
 			<TooltipTrigger
 				render={
 					// css trickery to truncate name but keep lower line as a minimum size
-					<p ref={ref} className="w-0 min-w-full truncate font-medium">
+					<p
+						ref={ref}
+						className="w-0 min-w-full truncate font-medium text-base"
+					>
 						{children}
 					</p>
 				}

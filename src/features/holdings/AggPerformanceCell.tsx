@@ -1,34 +1,53 @@
 import type { CellContext } from "@tanstack/react-table";
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn, formatPercentage } from "@/lib/utils";
 import type { HoldingRow } from "./columns";
 import { MoneyCell } from "./MoneyCell";
 
-export function AggPerformanceCell({ row }: CellContext<HoldingRow, number>) {
-	const isPos = row.original.display.period.gain > 0;
+export function AggPerformanceCell({
+	row,
+	tfKey,
+}: CellContext<HoldingRow, number> & { tfKey: "period" | "all_time" }) {
+	const gain = row.original.display[tfKey].gain;
+	const pct_gain = row.original.display[tfKey].pct_gain;
+
+	if (gain === null || pct_gain === null) {
+		return (
+			<p className="text-end font-normal text-muted-foreground text-sm">
+				Missing data
+			</p>
+		);
+	}
+	const isPos = gain > 0;
 
 	return (
 		<div
 			className={cn(
 				"flex place-content-end items-center gap-1",
-				row.original.display.period.gain >= 0
-					? "text-emerald-600"
-					: "text-rose-600",
+				isPos ? "text-emerald-700" : "text-rose-800",
 			)}
 		>
-			{isPos ? <ArrowUpRight /> : <ArrowDownRight />}
 			<div className="flex flex-col place-items-end gap-1">
 				<MoneyCell
-					value={row.original.display.period.gain}
+					value={gain}
 					currency={row.original.display_currency}
 					isConverted={row.original.is_converted}
-					originalValue={row.original.local.period.gain}
+					originalValue={gain}
 					originalCurrency={row.original.currency_code}
+					numFormatOpts={{ signDisplay: "exceptZero" }}
 					className="font-medium text-base"
 				/>
-				<p className="font-normal text-sm">
-					{formatPercentage(row.original.display.period.pct_gain)}
-				</p>
+				<Badge
+					variant="ghost"
+					className={cn(
+						"font-normal text-sm",
+						isPos ? "bg-emerald-50" : "bg-rose-50",
+					)}
+				>
+					{formatPercentage(pct_gain, {
+						signDisplay: "exceptZero",
+					})}
+				</Badge>
 			</div>
 		</div>
 	);
