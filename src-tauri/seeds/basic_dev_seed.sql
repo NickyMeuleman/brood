@@ -1288,3 +1288,80 @@ VALUES
     '178.81',
     '239.62'
   );
+
+-- adding price data to test timeframe testing
+INSERT INTO
+  price_history (
+    id,
+    listing_id,
+    date,
+    close,
+    source
+  )
+VALUES
+  (
+    9,
+    1,
+    '2026-04-15',
+    '115.00',
+    'EXCHANGE'
+  ),
+  (
+    10,
+    2,
+    '2026-04-15',
+    '42.50',
+    'EXCHANGE'
+  ),
+  (
+    11,
+    3,
+    '2026-04-15',
+    '22.80',
+    'EXCHANGE'
+  ),
+  (
+    12,
+    4,
+    '2026-04-15',
+    '198.00',
+    'EXCHANGE'
+  );
+
+INSERT INTO
+  price_history (
+    id,
+    listing_id,
+    date,
+    close,
+    source
+  )
+VALUES
+  (
+    13,
+    1,
+    '2025-06-01',
+    '99.00',
+    'EXCHANGE'
+  ),
+  (
+    14,
+    2,
+    '2025-06-01',
+    '34.00',
+    'EXCHANGE'
+  ),
+  (
+    15,
+    3,
+    '2025-06-01',
+    '495.00',
+    'EXCHANGE'
+  ),
+  (
+    16,
+    4,
+    '2025-06-01',
+    '210.00',
+    'EXCHANGE'
+  );
