@@ -459,7 +459,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         let acquisition_date = acquisition_dates[&lot.id];
         let is_during_period = period_start_date
             .map(|start| acquisition_date >= start)
-            .unwrap_or(false); // AllTime: no lots are "new"
+            .unwrap_or(true); // AllTime: all lots are "new"
         let rate = get_rate(&db.pool, &lot.currency_code, acquisition_date).await?;
         let cost_eur = cost * rate;
         let fees_listing = lot_fees[&lot.id].local * remaining_ratio;
@@ -530,7 +530,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             ) {
                 // all time
                 (None, _, _) => PeriodStart {
-                    value: None,
+                    value: Some(CurrencyPair::default()),
                     unit_price: None,
                 },
                 // period starting at 0 shares, price is irrelevant, value is Some(0)
@@ -565,30 +565,23 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
                     }
                 }
                 // period with starting shares but missing price
-                (Some(_), false, None) => PeriodStart {
-                    value: None,
-                    unit_price: None,
-                },
+                (Some(_), false, None) => PeriodStart::default(),
             };
 
             // --- 3. PERIOD METRICS ---
-            let period_perf = if period_start_date.is_some() {
-                CurrencyPair {
-                    local: Performance::calculate(
-                        period_start.value.map(|pair| pair.local),
-                        value,
-                        h.period.cost.local,
-                        h.period.fees.local,
-                    ),
-                    eur: Performance::calculate(
-                        period_start.value.map(|pair| pair.eur),
-                        value_eur,
-                        h.period.cost.eur,
-                        h.period.fees.eur,
-                    ),
-                }
-            } else {
-                all_time_perf
+            let period_perf = CurrencyPair {
+                local: Performance::calculate(
+                    period_start.value.map(|pair| pair.local),
+                    value,
+                    h.period.cost.local,
+                    h.period.fees.local,
+                ),
+                eur: Performance::calculate(
+                    period_start.value.map(|pair| pair.eur),
+                    value_eur,
+                    h.period.cost.eur,
+                    h.period.fees.eur,
+                ),
             };
 
             // --- 4. MAP TO ENVELOPE ---
