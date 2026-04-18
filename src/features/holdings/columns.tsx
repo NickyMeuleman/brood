@@ -284,7 +284,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 			header: SortableHeaderButton,
 			cell: ({ getValue }) => {
-				const val = getValue();
+				const val = getValue() ?? 0;
 				const formatted = formatPercentage(val);
 				return (
 					<div
@@ -298,16 +298,19 @@ function buildTimeFrameCols(isPeriod: boolean) {
 				);
 			},
 			footer: ({ table }) => {
+				// different pct calc to one on backand but mathematically equivalent
 				const rows = table.getFilteredRowModel().rows;
 				const gain = rows.reduce(
-					(acc, r) => acc + r.original.eur[tfKey].gain,
+					(acc, r) => acc + (r.original.eur[tfKey].gain ?? 0),
 					0,
 				);
-				const cost = rows.reduce(
-					(acc, r) => acc + r.original.eur[tfKey].cost,
+				const currentValue = rows.reduce(
+					(acc, r) => acc + (r.original.eur.current.value ?? 0),
 					0,
 				);
-				const percentage = cost !== 0 ? gain / cost : 0;
+
+				const base = currentValue - gain;
+				const percentage = base !== 0 ? gain / base : 0;
 				const formatted = formatPercentage(percentage);
 				return (
 					<div

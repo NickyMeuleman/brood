@@ -7,15 +7,15 @@ export function AggPerformanceFooter({
 	table,
 	tfKey,
 }: HeaderContext<HoldingRow, number> & { tfKey: "period" | "all_time" }) {
-	const [gain, cost] = table
+	const [gain, currentValue] = table
 		.getFilteredRowModel()
 		.rows.reduce<[number | null, number | null]>(
 			(acc, r) => {
 				const g = r.original.eur[tfKey].gain;
-				const c = r.original.eur[tfKey].cost;
+				const v = r.original.eur.current.value;
 
 				// If either val is null the whole result becomes null
-				if (g === null || c === null) {
+				if (g === null || v === null) {
 					return [null, null];
 				}
 
@@ -24,12 +24,20 @@ export function AggPerformanceFooter({
 					return [null, null];
 				}
 
-				return [acc[0] + g, acc[1] + c];
+				return [acc[0] + g, acc[1] + v];
 			},
 			[0, 0],
 		);
-	const percentage =
-		gain === null || cost === null || cost === 0 ? null : gain / cost;
+
+	let percentage = null;
+	if (gain !== null && currentValue !== null) {
+		// Base is universally (Current Value - Gain)
+		// different pct calculation to the one on the backend,
+		// but mathematically equivalent and easier to do with (filtered) table data
+		const base = currentValue - gain;
+		percentage = base !== 0 ? gain / base : 0;
+	}
+
 	const isPos = gain !== null && gain >= 0;
 
 	if (gain === null || percentage === null) {
