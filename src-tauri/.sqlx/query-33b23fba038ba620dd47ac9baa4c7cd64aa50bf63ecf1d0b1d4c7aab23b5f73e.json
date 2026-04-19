@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            l.id,\n            l.parent_lot_id,\n            l.source_trade_id,\n            l.qty_at_acquisition,\n            l.price_per_unit,\n            t.executed_at AS \"executed_at: NaiveDateTime\"  -- NULL for CA lots\n        FROM lot l\n        LEFT JOIN trade t ON t.id = l.source_trade_id\n        ORDER BY l.id ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "parent_lot_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "source_trade_id",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "qty_at_acquisition",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "price_per_unit",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "executed_at: NaiveDateTime",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "33b23fba038ba620dd47ac9baa4c7cd64aa50bf63ecf1d0b1d4c7aab23b5f73e"
+}

@@ -82,7 +82,7 @@ const snapshotColumns = [
 		header: SortableHeaderButton,
 		cell: ({ row, table }) => {
 			const total = Number(table.options.meta?.totals?.value ?? 1);
-			const val = row.original.eur.current.value / total;
+			const val = row.original.eur.current.value ?? 0 / total;
 			const formatted = formatPercentage(val);
 			return <div className="text-right font-medium">{formatted}</div>;
 		},
@@ -144,7 +144,10 @@ const snapshotColumns = [
 		footer: ({ table }) => {
 			const val = table
 				.getFilteredRowModel()
-				.rows.reduce((acc, curr) => acc + curr.original.eur.current.value, 0);
+				.rows.reduce(
+					(acc, curr) => acc + (curr.original.eur.current.value ?? 0),
+					0,
+				);
 			const formatted = formatCurrency(val, "EUR");
 			return <div className="text-right font-bold">{formatted}</div>;
 		},
@@ -178,7 +181,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 			footer: ({ table }) => {
 				const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-					const val = curr.original.eur[tfKey].cost;
+					const val = curr.original.eur[tfKey].cost ?? 0;
 					return acc + val;
 				}, 0);
 				const formatted = formatCurrency(total, "EUR");
@@ -206,7 +209,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			footer: ({ table }) => {
 				const total = table
 					.getFilteredRowModel()
-					.rows.reduce((acc, r) => acc + r.original.eur[tfKey].fees, 0);
+					.rows.reduce((acc, r) => acc + (r.original.eur[tfKey].fees ?? 0), 0);
 				return (
 					<div className="text-right font-bold">{formatCurrency(total)}</div>
 				);
@@ -226,7 +229,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			// No need for a fees toggle since it's always showing the fee picture.
 			cell: ({ getValue }) => (
 				<div className="text-right font-medium">
-					{formatPercentage(getValue())}
+					{formatPercentage(getValue() ?? 0)}
 				</div>
 			),
 		}),
@@ -240,24 +243,23 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 			header: SortableHeaderButton,
 			cell: ({ row }) => {
+				const gain = row.original.display[tfKey].gain;
 				return (
 					<MoneyCell
-						value={row.original.display[tfKey].gain}
+						value={gain}
 						currency={row.original.display_currency}
 						isConverted={row.original.is_converted}
 						originalValue={row.original.local[tfKey].gain}
 						originalCurrency={row.original.currency_code}
 						className={cn(
-							row.original.display.all_time.gain >= 0
-								? "text-emerald-600"
-								: "text-rose-600",
+							gain && gain >= 0 ? "text-emerald-600" : "text-rose-600",
 						)}
 					/>
 				);
 			},
 			footer: ({ table }) => {
 				const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-					const val = curr.original.eur[tfKey].gain;
+					const val = curr.original.eur[tfKey].gain ?? 0;
 					return acc + val;
 				}, 0);
 				const formatted = formatCurrency(total, "EUR");

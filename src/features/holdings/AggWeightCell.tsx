@@ -8,7 +8,7 @@ export function AggWeightCell({
 	getValue,
 }: CellContext<HoldingRow, number>) {
 	const total = Number(table.options.meta?.totals?.value ?? 1);
-	const weight = row.original.eur.current.value / total;
+	const weight = (row.original.eur.current.value ?? 0) / total;
 	return (
 		<div className="flex flex-col place-items-end gap-1">
 			<p className="font-medium text-base">

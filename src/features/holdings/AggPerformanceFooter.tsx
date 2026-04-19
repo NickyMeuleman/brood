@@ -6,7 +6,9 @@ import type { HoldingRow } from "./columns";
 export function AggPerformanceFooter({
 	table,
 	tfKey,
-}: HeaderContext<HoldingRow, number> & { tfKey: "period" | "all_time" }) {
+}: HeaderContext<HoldingRow, number | null> & {
+	tfKey: "period" | "all_time";
+}) {
 	const [gain, currentValue] = table
 		.getFilteredRowModel()
 		.rows.reduce<[number | null, number | null]>(

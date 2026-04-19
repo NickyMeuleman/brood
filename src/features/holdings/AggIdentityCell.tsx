@@ -19,7 +19,7 @@ export function AggIdentityCell({
 	row,
 }: CellContext<HoldingRow, string>) {
 	const total = Number(table.options.meta?.totals?.value ?? 1);
-	const weight = row.original.eur.current.value / total;
+	const weight = (row.original.eur.current.value ?? 0) / total;
 	const angle = weight * 360;
 	const image_url = false;
 	const exchangeLabel =

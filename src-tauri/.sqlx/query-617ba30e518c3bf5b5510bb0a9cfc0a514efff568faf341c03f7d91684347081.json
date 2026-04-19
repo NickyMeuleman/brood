@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT \n            l.id,\n            l.qty_at_acquisition,\n            l.listing_id,\n            l.price_per_unit,\n            li.currency_code,\n            li.ticker,\n            li.exchange_mic,\n            i.name,\n            i.isin,\n            i.instrument_type as \"instrument_type: InstrumentType\"\n        FROM lot l\n        JOIN listing li ON li.id = l.listing_id\n        JOIN instrument i ON i.id = l.instrument_id\n        WHERE l.id NOT IN (SELECT lot_id FROM lot_close)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "qty_at_acquisition",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "listing_id",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "price_per_unit",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "currency_code",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "ticker",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "exchange_mic",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "isin",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "instrument_type: InstrumentType",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "617ba30e518c3bf5b5510bb0a9cfc0a514efff568faf341c03f7d91684347081"
+}

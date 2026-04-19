@@ -15,14 +15,27 @@ export function MoneyCell({
 	className,
 	numFormatOpts,
 }: {
-	value: number;
+	value: number | null;
 	currency: string;
 	isConverted: boolean;
-	originalValue?: number;
+	originalValue: number | null;
 	originalCurrency?: string;
 	className?: string;
 	numFormatOpts?: Intl.NumberFormatOptions;
 }) {
+	if (value == null) {
+		return (
+			<div
+				className={cn(
+					"text-right font-medium text-muted-foreground",
+					className,
+				)}
+			>
+				Missing data
+			</div>
+		);
+	}
+
 	if (!isConverted) {
 		return (
 			<div className={cn("text-right font-medium", className)}>
@@ -49,14 +62,28 @@ export function MoneyCell({
 				}
 			/>
 			<TooltipContent side="top" className="text-xs">
-				<p className="font-medium">
-					{formatCurrency(
-						originalValue ?? 0,
-						originalCurrency ?? "EUR",
-						numFormatOpts,
-					)}
-					<span className="text-muted-foreground"> in {originalCurrency}</span>
-				</p>
+				{originalValue !== null ? (
+					<p className="font-medium">
+						{formatCurrency(
+							originalValue,
+							originalCurrency ?? "EUR",
+							numFormatOpts,
+						)}
+						<span className="opacity-60">
+							{" "}
+							in {originalCurrency}
+						</span>
+					</p>
+				) : (
+					<p
+						className={cn(
+							"text-right font-medium text-muted-foreground",
+							className,
+						)}
+					>
+						Missing data
+					</p>
+				)}
 			</TooltipContent>
 		</Tooltip>
 	);

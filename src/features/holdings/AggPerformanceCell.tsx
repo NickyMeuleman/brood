@@ -7,7 +7,7 @@ import { MoneyCell } from "./MoneyCell";
 export function AggPerformanceCell({
 	row,
 	tfKey,
-}: CellContext<HoldingRow, number> & { tfKey: "period" | "all_time" }) {
+}: CellContext<HoldingRow, number | null> & { tfKey: "period" | "all_time" }) {
 	const gain = row.original.display[tfKey].gain;
 	const pct_gain = row.original.display[tfKey].pct_gain;
 
@@ -24,7 +24,7 @@ export function AggPerformanceCell({
 		<div
 			className={cn(
 				"flex place-content-end items-center gap-1",
-				isPos ? "text-emerald-700" : "text-rose-800",
+				isPos ? "text-emerald-700" : "text-rose-700",
 			)}
 		>
 			<div className="flex flex-col place-items-end gap-1">

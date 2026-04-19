@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { type AnyRouteMatch, Link } from "@tanstack/react-router";
 import { Fragment } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -16,7 +16,13 @@ import {
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-export function AppShell({ children, matches }: any) {
+export function AppShell({
+	children,
+	matches,
+}: {
+	children: React.ReactNode;
+	matches: AnyRouteMatch[];
+}) {
 	return (
 		<SidebarProvider>
 			<AppSidebar />
