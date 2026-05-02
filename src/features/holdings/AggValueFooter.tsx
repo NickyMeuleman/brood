@@ -8,7 +8,7 @@ export function AggValueFooter({ table }: HeaderContext<HoldingRow, number>) {
 		.rows.reduce(
 			([value, cost], curr) => [
 				value + (curr.original.eur.current.value ?? 0),
-				cost + (curr.original.eur.all_time.cost ?? 0),
+				cost + (curr.original.eur.all_time.perf.cost ?? 0),
 			],
 			[0, 0],
 		);

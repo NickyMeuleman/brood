@@ -41,14 +41,14 @@ const aggColumns = [
 		cell: AggValueCell,
 		footer: AggValueFooter,
 	}),
-	columnHelper.accessor((row) => row.display.period.gain, {
+	columnHelper.accessor((row) => row.display.period.perf.gain, {
 		id: "agg_performance_period",
 		meta: { label: "Performance", showPeriod: true, align: "end" },
 		header: SortableHeaderButton,
 		cell: (props) => <AggPerformanceCell {...props} tfKey="period" />,
 		footer: (props) => <AggPerformanceFooter {...props} tfKey="period" />,
 	}),
-	columnHelper.accessor((row) => row.display.all_time.gain, {
+	columnHelper.accessor((row) => row.display.all_time.perf.gain, {
 		id: "agg_performance_all_time",
 		meta: { label: "Performance", align: "end", hideByDefault: true },
 		header: SortableHeaderButton,
@@ -159,7 +159,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 	const idSuffix = isPeriod ? "_period" : "_all_time";
 
 	return [
-		columnHelper.accessor((row) => row.display[tfKey].cost, {
+		columnHelper.accessor((row) => row.display[tfKey].perf.cost, {
 			id: `paid${idSuffix}`,
 			meta: {
 				label: "Paid",
@@ -171,24 +171,24 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			cell: ({ row }) => {
 				return (
 					<MoneyCell
-						value={row.original.display[tfKey].cost}
+						value={row.original.display[tfKey].perf.cost}
 						currency={row.original.display_currency}
 						isConverted={row.original.is_converted}
-						originalValue={row.original.local[tfKey].cost}
+						originalValue={row.original.local[tfKey].perf.cost}
 						originalCurrency={row.original.currency_code}
 					/>
 				);
 			},
 			footer: ({ table }) => {
 				const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-					const val = curr.original.eur[tfKey].cost ?? 0;
+					const val = curr.original.eur[tfKey].perf.cost ?? 0;
 					return acc + val;
 				}, 0);
 				const formatted = formatCurrency(total, "EUR");
 				return <div className={cn("text-right font-bold")}>{formatted}</div>;
 			},
 		}),
-		columnHelper.accessor((row) => row.display[tfKey].fees, {
+		columnHelper.accessor((row) => row.display[tfKey].perf.fees, {
 			id: `fees${idSuffix}`,
 			meta: {
 				label: "Fees",
@@ -199,23 +199,26 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			header: SortableHeaderButton,
 			cell: ({ row }) => (
 				<MoneyCell
-					value={row.original.display[tfKey].fees}
+					value={row.original.display[tfKey].perf.fees}
 					currency={row.original.display_currency}
 					isConverted={row.original.is_converted}
-					originalValue={row.original.local[tfKey].fees}
+					originalValue={row.original.local[tfKey].perf.fees}
 					originalCurrency={row.original.currency_code}
 				/>
 			),
 			footer: ({ table }) => {
 				const total = table
 					.getFilteredRowModel()
-					.rows.reduce((acc, r) => acc + (r.original.eur[tfKey].fees ?? 0), 0);
+					.rows.reduce(
+						(acc, r) => acc + (r.original.eur[tfKey].perf.fees ?? 0),
+						0,
+					);
 				return (
 					<div className="text-right font-bold">{formatCurrency(total)}</div>
 				);
 			},
 		}),
-		columnHelper.accessor((row) => row.display[tfKey].fee_drag, {
+		columnHelper.accessor((row) => row.display[tfKey].perf.fee_drag, {
 			id: `fee_drag${idSuffix}`,
 			meta: {
 				label: "Fee Drag",
@@ -233,7 +236,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 				</div>
 			),
 		}),
-		columnHelper.accessor((row) => row.display[tfKey].gain, {
+		columnHelper.accessor((row) => row.display[tfKey].perf.gain, {
 			id: `unrealised_gain${idSuffix}`,
 			meta: {
 				label: "Profit/Loss",
@@ -243,13 +246,13 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 			header: SortableHeaderButton,
 			cell: ({ row }) => {
-				const gain = row.original.display[tfKey].gain;
+				const gain = row.original.display[tfKey].perf.gain;
 				return (
 					<MoneyCell
 						value={gain}
 						currency={row.original.display_currency}
 						isConverted={row.original.is_converted}
-						originalValue={row.original.local[tfKey].gain}
+						originalValue={row.original.local[tfKey].perf.gain}
 						originalCurrency={row.original.currency_code}
 						className={cn(
 							gain && gain >= 0 ? "text-emerald-600" : "text-rose-600",
@@ -259,7 +262,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 			footer: ({ table }) => {
 				const total = table.getFilteredRowModel().rows.reduce((acc, curr) => {
-					const val = curr.original.eur[tfKey].gain ?? 0;
+					const val = curr.original.eur[tfKey].perf.gain ?? 0;
 					return acc + val;
 				}, 0);
 				const formatted = formatCurrency(total, "EUR");
@@ -276,7 +279,7 @@ function buildTimeFrameCols(isPeriod: boolean) {
 			},
 		}),
 		// % of bought value to add to bought value to get market_value
-		columnHelper.accessor((row) => row.display[tfKey].pct_gain, {
+		columnHelper.accessor((row) => row.display[tfKey].perf.pct_gain, {
 			id: `percentage_gain${idSuffix}`,
 			meta: {
 				label: "% Gain",
@@ -300,25 +303,42 @@ function buildTimeFrameCols(isPeriod: boolean) {
 				);
 			},
 			footer: ({ table }) => {
-				// different pct calc to one on backand but mathematically equivalent
-				const rows = table.getFilteredRowModel().rows;
-				const gain = rows.reduce(
-					(acc, r) => acc + (r.original.eur[tfKey].gain ?? 0),
-					0,
-				);
-				const currentValue = rows.reduce(
-					(acc, r) => acc + (r.original.eur.current.value ?? 0),
-					0,
-				);
+				const [gain, base] = table
+					.getFilteredRowModel()
+					.rows.reduce<[number | null, number | null]>(
+						(acc, r) => {
+							const gain = r.original.eur[tfKey].perf.gain;
+							const cost = r.original.eur[tfKey].perf.cost;
 
-				const base = currentValue - gain;
-				const percentage = base !== 0 ? gain / base : 0;
-				const formatted = formatPercentage(percentage);
+							// If either val is null the whole result becomes null
+							if (gain === null || cost === null) {
+								return [null, null];
+							}
+
+							// keep acc null
+							if (acc[0] === null || acc[1] === null) {
+								return [null, null];
+							}
+
+							const startValue = r.original.eur[tfKey].start.value ?? 0;
+							return [acc[0] + gain, acc[1] + cost + startValue];
+						},
+						[0, 0],
+					);
+
+				let percentage = null;
+				if (gain !== null && base !== null) {
+					percentage = base !== 0 ? gain / base : 0;
+				}
+				const formatted =
+					percentage !== null ? formatPercentage(percentage) : "Missing data";
 				return (
 					<div
 						className={cn(
 							"text-right font-bold",
-							percentage > 0 ? "text-emerald-600" : "text-rose-600",
+							percentage !== null && percentage > 0
+								? "text-emerald-600"
+								: "text-rose-600",
 						)}
 					>
 						{formatted}

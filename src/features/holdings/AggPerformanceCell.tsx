@@ -8,8 +8,8 @@ export function AggPerformanceCell({
 	row,
 	tfKey,
 }: CellContext<HoldingRow, number | null> & { tfKey: "period" | "all_time" }) {
-	const gain = row.original.display[tfKey].gain;
-	const pct_gain = row.original.display[tfKey].pct_gain;
+	const gain = row.original.display[tfKey].perf.gain;
+	const pct_gain = row.original.display[tfKey].perf.pct_gain;
 
 	if (gain === null || pct_gain === null) {
 		return (

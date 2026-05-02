@@ -28,6 +28,16 @@ export function normalizeHolding(
 		};
 	};
 
+	const resolvePeriodCtx = (ctx: PeriodContext, useEur: boolean) => ({
+		start: {
+			value: ctx.start_value ? toNum(cur(ctx.start_value, useEur)) : null,
+			unit_price: ctx.start_unit_price
+				? toNum(cur(ctx.start_unit_price, useEur))
+				: null,
+		},
+		perf: resolvePerf(ctx, useEur),
+	});
+
 	const resolveCurrent = (snap: Snapshot, useEur: boolean) => {
 		return {
 			quantity: toNum(snap.quantity),
@@ -39,8 +49,8 @@ export function normalizeHolding(
 
 	const resolve = (useEur: boolean) => ({
 		current: resolveCurrent(h.current, useEur),
-		all_time: resolvePerf(h.all_time, useEur),
-		period: resolvePerf(h.period, useEur),
+		all_time: resolvePeriodCtx(h.all_time, useEur),
+		period: resolvePeriodCtx(h.period, useEur),
 	});
 
 	return {

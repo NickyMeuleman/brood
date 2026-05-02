@@ -16,10 +16,10 @@ export function AggValueCell({ row }: CellContext<HoldingRow, number>) {
 			<div className="flex gap-0.5 text-muted-foreground text-sm">
 				<span>paid</span>
 				<MoneyCell
-					value={row.original.display.all_time.cost}
+					value={row.original.display.all_time.perf.cost}
 					currency={row.original.display_currency}
 					isConverted={row.original.is_converted}
-					originalValue={row.original.local.all_time.cost}
+					originalValue={row.original.local.all_time.perf.cost}
 					originalCurrency={row.original.currency_code}
 					className="font-normal text-sm"
 				/>
