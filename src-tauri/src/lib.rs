@@ -10,7 +10,7 @@ use commands::holdings::get_holdings;
 use db::init_db;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use specta_typescript::{BigIntExportBehavior, Typescript};
+use specta_typescript::Typescript;
 use std::str::FromStr;
 use tauri::{async_runtime::block_on, Manager};
 use tauri_specta::{collect_commands, Builder};
@@ -67,9 +67,7 @@ pub fn run() {
     #[cfg(debug_assertions)]
     builder
         .export(
-            // treat i64s as js numbers because sqlite integers are i64s, WARNING: possible data loss
             Typescript::default()
-                .bigint(BigIntExportBehavior::Number)
                 // make typescript ignore the generated bindings file
                 .header("//@ts-nocheck"),
             "../src/bindings.ts",
