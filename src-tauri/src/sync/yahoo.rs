@@ -1,9 +1,10 @@
 use chrono::{NaiveDate, TimeZone, Utc};
-use chrono_tz::Tz;
 use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::{mic_timezone, yahoo_suffix};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -52,33 +53,38 @@ pub struct ChartResult {
     pub indicators: Indicators,
 }
 
+// only fields that are necessary are not an Option or defaulted
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
-    pub currency: String,
+    pub currency: Option<String>,
     pub symbol: String,
     pub exchange_name: String,
     pub full_exchange_name: String,
-    pub instrument_type: String,
-    pub first_trade_date: i64,
-    pub regular_market_time: i64,
+    pub instrument_type: Option<String>,
+    pub first_trade_date: Option<i64>,
+    pub regular_market_time: Option<i64>,
+    #[serde(default)]
     pub has_pre_post_market_data: bool,
-    pub gmtoffset: i64,
-    pub timezone: String,
+    pub gmtoffset: Option<i64>,
+    pub timezone: Option<String>,
     pub exchange_timezone_name: String,
-    pub regular_market_price: Decimal,
-    pub fifty_two_week_high: Decimal,
-    pub fifty_two_week_low: Decimal,
-    pub regular_market_day_high: Decimal,
-    pub regular_market_day_low: Decimal,
-    pub regular_market_volume: i64,
-    pub long_name: String,
-    pub short_name: String,
-    pub chart_previous_close: Decimal,
-    pub price_hint: i32,
-    pub current_trading_period: TradingPeriods,
+    pub regular_market_price: Option<Decimal>,
+    pub fifty_two_week_high: Option<Decimal>,
+    pub fifty_two_week_low: Option<Decimal>,
+    pub regular_market_day_high: Option<Decimal>,
+    pub regular_market_day_low: Option<Decimal>,
+    pub regular_market_volume: Option<i64>,
+    pub long_name: Option<String>,
+    pub short_name: Option<String>,
+    pub chart_previous_close: Option<Decimal>,
+    pub price_hint: Option<i32>,
+    pub current_trading_period: Option<TradingPeriods>,
+    #[serde(default)]
     pub data_granularity: String,
+    #[serde(default)]
     pub range: String,
+    #[serde(default)]
     pub valid_ranges: Vec<String>,
 }
 
@@ -100,7 +106,8 @@ pub struct TradingPeriod {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Indicators {
     pub quote: Vec<Quote>,
-    pub adjclose: Vec<AdjClose>,
+    #[serde(default)]
+    pub adjclose: Option<Vec<AdjClose>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,31 +121,26 @@ pub struct Quote {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdjClose {
-    pub adjclose: Vec<Decimal>,
+    adjclose: Option<Vec<Option<Decimal>>>,
 }
 
-/// Returns an empty string for US exchanges (no suffix needed).
-pub fn yahoo_suffix(exchange_mic: &str) -> Result<&'static str, Error> {
-    match exchange_mic {
-        "XNAS" | "XNYS" | "NYSE" | "ARCX" => Ok(""), // Murica
-        "XAMS" => Ok(".AS"),                         // Amsterdam
-        "XPAR" => Ok(".PA"),                         // Paris
-        "XBRU" => Ok(".BR"),                         // Brussels
-        "XLIS" => Ok(".LS"),                         // Lisbon
-        "XETR" => Ok(".DE"),                         // Frankfurt - Xetra
-        "XFRA" => Ok(".F"),                          // Frankfurt - Borse
-        "XSTU" => Ok(".SG"),                         // Stuttgart
-        "XLON" => Ok(".L"),                          // London
-        "XSWX" => Ok(".SW"),                         // Zurich
-        "XMIL" => Ok(".MI"),                         // Milan
-        "XSTO" => Ok(".ST"),                         // Stockholm
-        "XCSE" => Ok(".CO"),                         // Copenhagen
-        "XHEL" => Ok(".HE"),                         // Helsinki
-        "XOSL" => Ok(".OL"),                         // Oslo
-        other => Err(Error::Parse(format!(
-            "Unknown exchange MIC '{other}': add it to yahoo_suffix() before syncing"
-        ))),
-    }
+fn make_bar(quote: &Quote, i: usize, date: NaiveDate) -> Result<PriceBar, Error> {
+    let get_val =
+        |vec: &[Option<Decimal>], i: usize, field: &'static str| -> Result<Decimal, Error> {
+            vec.get(i)
+                .and_then(|v| *v)
+                .ok_or(Error::MissingField(field))
+        };
+
+    // if any part of the bar was null in JSON, skip that day but don't skip the entire fetch
+    Ok(PriceBar {
+        date,
+        open: get_val(&quote.open, i, "open")?,
+        high: get_val(&quote.high, i, "high")?,
+        low: get_val(&quote.low, i, "low")?,
+        close: get_val(&quote.close, i, "close")?,
+        volume: quote.volume.get(i).and_then(|v| *v).unwrap_or(0),
+    })
 }
 
 /// Fetch daily OHLCV bars for a single listing from Yahoo Finance.
@@ -153,28 +155,27 @@ pub fn yahoo_suffix(exchange_mic: &str) -> Result<&'static str, Error> {
 pub async fn fetch_prices(
     client: &Client,
     ticker: &str,
-    exchange_mic: &str,
+    mic: &str,
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Vec<PriceBar>, Error> {
-    let suffix = yahoo_suffix(exchange_mic)?;
+    let exchange_tz = mic_timezone(mic)?;
+    let suffix = yahoo_suffix(mic)?;
     let symbol = format!("{ticker}{suffix}");
 
-    // Use noon UTC to avoid DST edge cases when converting NaiveDate → timestamp.
+    // Yahoo expects these timestamps in UTC ... I think (no official docs sadly)
     // Obligatory Tom Scott timezone video
+    // period1 is inclusive, period2 is exclusive
     let period1 = Utc
         .from_utc_datetime(
             &from
-                .and_hms_opt(12, 0, 0)
+                .and_hms_opt(0, 0, 0)
                 .ok_or(Error::Parse("Invalid 'from' date/time".into()))?,
         )
         .timestamp();
-    let period2 = Utc
-        .from_utc_datetime(
-            &to.and_hms_opt(12, 0, 0)
-                .ok_or(Error::Parse("Invalid 'to' date/time".into()))?,
-        )
-        .timestamp();
+    // too wide by choice to make certain yahoo doesn't drop the last finished day because the to
+    // timestamp didn't fall in exchange opening hours. timezone stuff is fun
+    let period2 = Utc::now().timestamp();
 
     let url = format!(
         "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}\
@@ -207,27 +208,22 @@ pub async fn fetch_prices(
         .quote
         .first()
         .ok_or_else(|| Error::Parse("Missing quote indicators".into()))?;
-
     let timestamps = result
         .timestamp
         .as_ref()
         .ok_or_else(|| Error::MissingField("timestamp"))?;
 
-    if quote.open.len() != timestamps.len()
-        || quote.high.len() != timestamps.len()
-        || quote.low.len() != timestamps.len()
-        || quote.close.len() != timestamps.len()
-    {
-        return Err(Error::Parse(
-            "Mismatched list lengths in Yahoo response".into(),
-        ));
-    }
+    // double check timezone
+    let yahoo_tz_name = &result.meta.exchange_timezone_name;
+    let yahoo_tz = yahoo_tz_name.parse().map_err(|_| {
+        Error::Parse(format!(
+            "Unknown Yahoo timezone '{yahoo_tz_name}' is invalid"
+        ))
+    })?;
 
-    let exchange_tz: Tz = result
-        .meta
-        .exchange_timezone_name
-        .parse()
-        .map_err(|_| Error::Parse("Invalid exchange timezone".into()))?;
+    if exchange_tz != yahoo_tz {
+        return Err(Error::Parse("Inconsistent timezone info".to_string()));
+    }
 
     let mut bars = Vec::new();
     for (i, ts) in timestamps.iter().enumerate() {
@@ -236,18 +232,19 @@ pub async fn fetch_prices(
             .timestamp_opt(*ts, 0)
             .single()
             .ok_or_else(|| Error::Parse("Invalid timestamp".into()))?;
+        let date = datetime.date_naive();
 
-        bars.push(PriceBar {
-            date: datetime.date_naive(),
-            open: quote.open[i].ok_or(Error::MissingField("open"))?,
-            high: quote.high[i].ok_or(Error::MissingField("high"))?,
-            low: quote.low[i].ok_or(Error::MissingField("low"))?,
-            close: quote.close[i].ok_or(Error::MissingField("close"))?,
-            volume: quote.volume[i].unwrap_or(0),
-        });
+        // ignore bars before from (apparently yahoo sometimes returns some of those, no idea why)
+        // ignore bars after to (prevent saving in-progress bars)
+        if date < from || date > to {
+            continue;
+        }
+
+        match make_bar(quote, i, date) {
+            Ok(bar) => bars.push(bar),
+            Err(e) => eprintln!("Skipping bar for {date}: {e}"),
+        }
     }
-
-    dbg!(symbol, period1, period2, url, &bars);
 
     Ok(bars)
 }

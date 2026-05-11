@@ -5,13 +5,18 @@
 
 mod commands;
 mod db;
+mod sync;
 
+use chrono_tz::Tz;
 use commands::holdings::get_holdings;
+use commands::sync::sync_market_data;
+
 use db::init_db;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::str::FromStr;
+use sync::yahoo::Error as YahooError;
 use tauri::{async_runtime::block_on, Manager};
 use tauri_specta::{collect_commands, Builder};
 use thiserror::Error;
@@ -42,27 +47,9 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
-#[derive(sqlx::FromRow, Serialize, Deserialize, specta::Type)]
-pub struct Count {
-    pub id: i64,
-    pub value: i64,
-}
-
-#[tauri::command]
-#[specta::specta]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn count(to: u32) -> Vec<u32> {
-    (0..=to).collect()
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = Builder::new().commands(collect_commands![greet, count, get_holdings]);
+    let builder = Builder::new().commands(collect_commands![get_holdings, sync_market_data]);
 
     #[cfg(debug_assertions)]
     builder
@@ -84,9 +71,117 @@ pub fn run() {
 
             // tauri specta: required to use events
             builder.mount_events(app);
-
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
+}
+
+pub fn yahoo_suffix(mic: &str) -> Result<&'static str, YahooError> {
+    match mic {
+        // United States (no suffix)
+        "XNAS" | "XNYS" | "NYSE" | "ARCX" | "XASE" | "XPHL" | "XBOS" | "IEXG" => Ok(""),
+
+        // Canada
+        "XTSE" => Ok(".TO"),
+        "XTSX" => Ok(".V"),
+
+        // United Kingdom
+        "XLON" => Ok(".L"),
+
+        // Euronext
+        "XAMS" => Ok(".AS"),
+        "XPAR" => Ok(".PA"),
+        "XBRU" => Ok(".BR"),
+        "XLIS" => Ok(".LS"),
+
+        // Germany
+        "XETR" => Ok(".DE"),
+        "XFRA" => Ok(".F"),
+        "XSTU" => Ok(".SG"),
+
+        // Switzerland
+        "XSWX" => Ok(".SW"),
+
+        // Italy
+        "XMIL" => Ok(".MI"),
+
+        // Nordics
+        "XSTO" => Ok(".ST"),
+        "XCSE" => Ok(".CO"),
+        "XHEL" => Ok(".HE"),
+        "XOSL" => Ok(".OL"),
+
+        // Japan
+        "XTKS" => Ok(".T"),
+
+        // Hong Kong
+        "XHKG" => Ok(".HK"),
+
+        // Australia
+        "XASX" => Ok(".AX"),
+
+        other => Err(crate::sync::yahoo::Error::Parse(format!(
+            "Unknown exchange MIC '{other}': add it to yahoo_suffix() before syncing"
+        ))),
+    }
+}
+
+pub fn mic_timezone(mic: &str) -> Result<Tz, YahooError> {
+    use chrono_tz::{America, Asia, Australia, Europe};
+
+    match mic {
+        // United States (mostly Eastern Time)
+        "XNAS" | "XNYS" | "NYSE" | "ARCX" | "XASE" | "XPHL" | "XBOS" | "IEXG" => {
+            Ok(America::New_York)
+        }
+        "XCHI" | "XCBO" => Ok(America::Chicago),
+
+        // Canada
+        "XTSE" | "XTSX" | "XMOD" => Ok(America::Toronto),
+
+        // United Kingdom
+        "XLON" | "XOFF" => Ok(Europe::London),
+
+        // Euronext
+        "XAMS" => Ok(Europe::Amsterdam),
+        "XPAR" => Ok(Europe::Paris),
+        "XBRU" => Ok(Europe::Brussels),
+        "XLIS" => Ok(Europe::Lisbon),
+        "XDUB" => Ok(Europe::Dublin),
+
+        // Germany
+        "XETR" | "XFRA" | "XSTU" => Ok(Europe::Berlin),
+
+        // Switzerland
+        "XSWX" => Ok(Europe::Zurich),
+
+        // Italy
+        "XMIL" => Ok(Europe::Rome),
+
+        // Nordics
+        "XSTO" => Ok(Europe::Stockholm),
+        "XCSE" => Ok(Europe::Copenhagen),
+        "XHEL" => Ok(Europe::Helsinki),
+        "XOSL" => Ok(Europe::Oslo),
+
+        // Japan
+        "XTKS" | "XOSJ" => Ok(Asia::Tokyo),
+
+        // Hong Kong
+        "XHKG" => Ok(Asia::Hong_Kong),
+
+        // China
+        "XSHG" | "XSHE" => Ok(Asia::Shanghai),
+
+        // Australia
+        "XASX" => Ok(Australia::Sydney),
+
+        // India
+        "XBOM" | "XNSE" => Ok(Asia::Kolkata),
+
+        other => Err(YahooError::Parse(format!(
+            "Unknown exchange MIC '{other}': add it to mic_timezone() before syncing"
+        ))),
+    }
 }
