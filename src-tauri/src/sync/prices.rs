@@ -18,10 +18,9 @@ pub struct PriceSyncTask {
     pub from: NaiveDate,
     pub to: NaiveDate,
 }
-
 #[derive(Debug, serde::Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "camelCase")]
-pub enum SyncOutcome {
+pub enum PriceSyncOutcome {
     Success { ticker: String, added: usize },
     Error { ticker: String, message: String },
 }
@@ -32,24 +31,24 @@ pub enum SyncOutcome {
 pub async fn sync_all_prices(
     pool: &Pool<Sqlite>,
     client: &Client,
-) -> Result<Vec<SyncOutcome>, AppError> {
-    let price_sync_tasks = get_price_sync_tasks(pool).await?;
+) -> Result<Vec<PriceSyncOutcome>, AppError> {
+    let tasks = get_price_sync_tasks(pool).await?;
 
     let mut outcomes = Vec::new();
-    for (i, task) in price_sync_tasks.iter().enumerate() {
+    for (i, task) in tasks.iter().enumerate() {
         // be nice to the Yahoo API to not get rate limited
         if i > 0 {
             sleep(Duration::from_millis(200)).await;
         }
 
         match sync_one_listing(pool, client, task).await {
-            Ok(added) => outcomes.push(SyncOutcome::Success {
+            Ok(added) => outcomes.push(PriceSyncOutcome::Success {
                 ticker: task.ticker.clone(),
                 added,
             }),
             Err(e) => {
                 eprintln!("Price sync for {} failed: {}", task.ticker, e);
-                outcomes.push(SyncOutcome::Error {
+                outcomes.push(PriceSyncOutcome::Error {
                     ticker: task.ticker.clone(),
                     message: e.to_string(),
                 });
@@ -68,26 +67,27 @@ pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTa
     let rows = sqlx::query!(
         r#"
         SELECT
-            li.id              AS "listing_id!",
-            li.ticker          AS "ticker!",
-            li.exchange_mic    AS "exchange_mic!",
-            MAX(ph.date)       AS "last_price_date: NaiveDate",
-            -- Earliest acquisition: trade-originated lots use trade.executed_at,
-            -- CA-originated lots fall back to the corporate_action.effective_date.
-            MIN(
-                COALESCE(
-                    DATE(t.executed_at),
-                    DATE(ca.effective_date)
-                )
-            )                  AS "earliest_acquisition: NaiveDate"
+            li.id               AS "listing_id!",
+            li.ticker           AS "ticker!",
+            li.exchange_mic     AS "exchange_mic!",
+            -- 1. Get the last synced date (if any)
+            (SELECT MAX(date) FROM price_history WHERE listing_id = li.id) AS "last_price_date: NaiveDate",
+            -- 2. Get the earliest acquisition date across ALL lots (including closed ones)
+            (
+                SELECT MIN(COALESCE(DATE(t2.executed_at), DATE(ca2.effective_date)))
+                FROM lot l2
+                LEFT JOIN trade t2 ON t2.id = l2.source_trade_id
+                LEFT JOIN corporate_action ca2 ON ca2.id = l2.source_ca_id
+                WHERE l2.listing_id = li.id
+            )                   AS "earliest_acquisition: NaiveDate"
         FROM listing li
-        JOIN lot l ON l.listing_id = li.id
-        LEFT JOIN lot_close lc ON lc.lot_id = l.id
-        LEFT JOIN trade t ON t.id = l.source_trade_id
-        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
-        LEFT JOIN price_history ph ON ph.listing_id = li.id
-        WHERE lc.lot_id IS NULL          -- open lots only
-          AND li.delisted_at IS NULL     -- active listings only
+        WHERE li.delisted_at IS NULL
+          AND EXISTS (
+              -- 3. Only sync listings that currently have at least one open lot
+              SELECT 1 FROM lot l3
+              LEFT JOIN lot_close lc3 ON lc3.lot_id = l3.id
+              WHERE l3.listing_id = li.id AND lc3.lot_id IS NULL
+          )
         GROUP BY li.id, li.ticker, li.exchange_mic
         "#
     )
@@ -107,7 +107,7 @@ pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTa
             .with_timezone(&tz)
             .date_naive()
             .pred_opt()
-            .expect("Valid starting date");
+            .expect("valid date");
 
         if from <= to {
             tasks.push(PriceSyncTask {
@@ -130,7 +130,7 @@ pub async fn sync_one_listing(
 ) -> Result<usize, AppError> {
     let bars = fetch_prices(client, &task.ticker, &task.mic, task.from, task.to)
         .await
-        .map_err(|_| AppError::Internal)?;
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
     if bars.is_empty() {
         return Ok(0);
@@ -147,11 +147,17 @@ pub async fn sync_one_listing(
         let low = bar.low.to_string();
         let close = bar.close.to_string();
         let volume = bar.volume as i64;
+
         let affected = sqlx::query!(
             r#"
             INSERT INTO price_history (listing_id, date, open, high, low, close, volume, source)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'YAHOO')
-            ON CONFLICT (listing_id, date, source) DO NOTHING
+            ON CONFLICT (listing_id, date, source) DO UPDATE SET
+              open   = excluded.open,
+              high   = excluded.high,
+              low    = excluded.low,
+              close  = excluded.close,
+              volume = excluded.volume
             "#,
             id,
             date,
@@ -172,49 +178,3 @@ pub async fn sync_one_listing(
     tx.commit().await.map_err(AppError::from)?;
     Ok(count)
 }
-
-// async fn insert_price_bars_bulk(
-//     pool: &Pool<Sqlite>,
-//     listing_id: i64,
-//     bars: &[PriceBar],
-// ) -> Result<usize, AppError> {
-//     // sqlx::QueryBuilder creates a single parameterized batch insert (much faster than looping)
-//     let mut query_builder = QueryBuilder::new(
-//         "INSERT INTO price_history (listing_id, date, source, close, open, high, low, volume) "
-//     );
-//
-//     query_builder.push_values(bars, |mut b, bar| {
-//         b.push_bind(listing_id)
-//          .push_bind(bar.date)
-//          .push_bind("EXCHANGE") // Must match schema CHECK constraint!
-//          .push_bind(bar.close.to_string())
-//          .push_bind(bar.open.to_string())
-//          .push_bind(bar.high.to_string())
-//          .push_bind(bar.low.to_string())
-//          .push_bind(bar.volume as i64);
-//     });
-//
-//     // ON CONFLICT DO UPDATE ensures we overwrite existing data if Yahoo retroactively adjusted prices
-//     query_builder.push(
-//         r#"
-//         ON CONFLICT(listing_id, date, source)
-//         DO UPDATE SET
-//             close = excluded.close,
-//             open = excluded.open,
-//             high = excluded.high,
-//             low = excluded.low,
-//             volume = excluded.volume
-//         "#
-//     );
-//
-//     let rows_affected = query_builder
-//         .build()
-//         .execute(pool)
-//         .await
-//         .map_err(AppError::from)?
-//         .rows_affected();
-//
-//     // Note: Due to SQLite mechanics, DO UPDATE might report 2 rows affected for a single update.
-//     // If you need exact counts of bars processed, just return `bars.len()`.
-//     Ok(bars.len())
-// }
