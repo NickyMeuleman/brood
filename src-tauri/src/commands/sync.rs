@@ -1,25 +1,54 @@
 use crate::db::Db;
 use crate::sync::fx::{sync_all_fx, FXSyncOutcome};
 use crate::sync::prices::{sync_all_prices, sync_one_listing, PriceSyncOutcome, PriceSyncTask};
-use crate::{mic_timezone, AppError};
+use crate::{mic_timezone, AppError, HttpClient};
 use chrono::{NaiveDate, Utc};
 use tauri::State;
 
+#[derive(Debug, serde::Serialize, specta::Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub struct SyncOutcomes {
+    fx: Vec<FXSyncOutcome>,
+    prices: Vec<PriceSyncOutcome>,
+}
+
 #[tauri::command]
 #[specta::specta]
-pub async fn sync_prices(db: State<'_, Db>) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    let client = reqwest::Client::new();
-    let outcomes = sync_all_prices(&db.pool, &client).await?;
-    dbg!("price outcomes: ", &outcomes);
+pub async fn sync(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+) -> Result<SyncOutcomes, AppError> {
+    let (fx_outcomes, prices_outcomes) = tokio::try_join!(
+        sync_all_fx(&db.pool, &http.client),
+        sync_all_prices(&db.pool, &http.client)
+    )?;
+
+    dbg!("fx outcomes: ", &fx_outcomes);
+    dbg!("price outcomes: ", &prices_outcomes);
+
+    Ok(SyncOutcomes {
+        fx: fx_outcomes,
+        prices: prices_outcomes,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_prices(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+) -> Result<Vec<PriceSyncOutcome>, AppError> {
+    let outcomes = sync_all_prices(&db.pool, &http.client).await?;
     Ok(outcomes)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn sync_fx(db: State<'_, Db>) -> Result<Vec<FXSyncOutcome>, AppError> {
-    let client = reqwest::Client::new();
-    let outcomes = sync_all_fx(&db.pool, &client).await?;
-    dbg!("Fx outcomes: ", &outcomes);
+pub async fn sync_fx(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+) -> Result<Vec<FXSyncOutcome>, AppError> {
+    let outcomes = sync_all_fx(&db.pool, &http.client).await?;
     Ok(outcomes)
 }
 
@@ -27,12 +56,11 @@ pub async fn sync_fx(db: State<'_, Db>) -> Result<Vec<FXSyncOutcome>, AppError> 
 #[specta::specta]
 pub async fn force_update_one_listing_prices(
     db: State<'_, Db>,
+    http: State<'_, HttpClient>,
     listing_id: i64,
     mic: String,
     ticker: String,
 ) -> Result<usize, AppError> {
-    let client = reqwest::Client::new();
-
     let tz = mic_timezone(&mic).map_err(|_| AppError::Internal)?;
     let to = Utc::now()
         .with_timezone(&tz)
@@ -63,14 +91,15 @@ pub async fn force_update_one_listing_prices(
         to,
     };
 
-    sync_one_listing(&db.pool, &client, &task).await
+    sync_one_listing(&db.pool, &http.client, &task).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn force_update_all_prices(db: State<'_, Db>) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    let client = reqwest::Client::new();
-
+pub async fn force_update_all_prices(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+) -> Result<Vec<PriceSyncOutcome>, AppError> {
     // 1. Get every active listing that has at least one lot
     let rows = sqlx::query!(
         r#"
@@ -114,7 +143,7 @@ pub async fn force_update_all_prices(db: State<'_, Db>) -> Result<Vec<PriceSyncO
             to,
         };
 
-        match sync_one_listing(&db.pool, &client, &task).await {
+        match sync_one_listing(&db.pool, &http.client, &task).await {
             Ok(added) => outcomes.push(PriceSyncOutcome::Success {
                 ticker: row.ticker,
                 added,

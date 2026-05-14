@@ -9,9 +9,9 @@ mod sync;
 
 use chrono_tz::Tz;
 use commands::holdings::get_holdings;
-use commands::sync::sync_market_data;
-
+use commands::sync::{sync, sync_fx, sync_prices};
 use db::init_db;
+use reqwest;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
@@ -47,9 +47,15 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
+#[derive(Clone)]
+pub struct HttpClient {
+    pub client: reqwest::Client,
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = Builder::new().commands(collect_commands![get_holdings, sync_market_data]);
+    let builder =
+        Builder::new().commands(collect_commands![get_holdings, sync, sync_fx, sync_prices]);
 
     #[cfg(debug_assertions)]
     builder
@@ -68,6 +74,12 @@ pub fn run() {
             // init db and add it to the tauri managed state
             let db = block_on(init_db(&app));
             app.manage(db);
+
+            // store shared reqwest client
+            let http = HttpClient {
+                client: reqwest::Client::new(),
+            };
+            app.manage(http);
 
             // tauri specta: required to use events
             builder.mount_events(app);
