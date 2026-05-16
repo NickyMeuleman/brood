@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO price_history (listing_id, date, open, high, low, close, volume, source)\n            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'YAHOO')\n            ON CONFLICT (listing_id, date, source) DO UPDATE SET\n              open   = excluded.open,\n              high   = excluded.high,\n              low    = excluded.low,\n              close  = excluded.close,\n              volume = excluded.volume\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "f47cbe9a570ad38608b1d3daa82c3ff16e30f99b4740cbeb8db8254373b39474"
+}

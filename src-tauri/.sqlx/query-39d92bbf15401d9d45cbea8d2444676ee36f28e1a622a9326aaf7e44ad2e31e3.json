@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            li.id               AS \"listing_id!\",\n            li.ticker           AS \"ticker!\",\n            li.exchange_mic     AS \"exchange_mic!\",\n            -- 1. Get the last synced date (if any)\n            (SELECT MAX(date) FROM price_history WHERE listing_id = li.id) AS \"last_price_date: NaiveDate\",\n            -- 2. Get the earliest acquisition date across ALL lots (including closed ones)\n            (\n                SELECT MIN(COALESCE(DATE(t2.executed_at), DATE(ca2.effective_date)))\n                FROM lot l2\n                LEFT JOIN trade t2 ON t2.id = l2.source_trade_id\n                LEFT JOIN corporate_action ca2 ON ca2.id = l2.source_ca_id\n                WHERE l2.listing_id = li.id\n            )                   AS \"earliest_acquisition: NaiveDate\"\n        FROM listing li\n        WHERE li.delisted_at IS NULL\n          AND EXISTS (\n              -- 3. Only sync listings that currently have at least one open lot\n              SELECT 1 FROM lot l3\n              LEFT JOIN lot_close lc3 ON lc3.lot_id = l3.id\n              WHERE l3.listing_id = li.id AND lc3.lot_id IS NULL\n          )\n        GROUP BY li.id, li.ticker, li.exchange_mic\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "listing_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ticker!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "exchange_mic!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_price_date: NaiveDate",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "earliest_acquisition: NaiveDate",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "39d92bbf15401d9d45cbea8d2444676ee36f28e1a622a9326aaf7e44ad2e31e3"
+}

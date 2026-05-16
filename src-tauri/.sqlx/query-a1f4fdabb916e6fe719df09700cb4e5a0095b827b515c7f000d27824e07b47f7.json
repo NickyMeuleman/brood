@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            li.currency_code                                                    AS \"currency!\",\n            -- 1. Last stored ECB rate for this currency\n            (\n                SELECT MAX(date) FROM fx_rate\n                WHERE currency = li.currency_code AND source = 'ECB'\n            )                                                                   AS \"last_rate_date: NaiveDate\",\n            -- 2. Earliest acquisition across all lots for any listing in this currency\n            (\n                SELECT MIN(COALESCE(DATE(t2.executed_at), DATE(ca2.effective_date)))\n                FROM lot l2\n                LEFT JOIN listing li2 ON li2.id = l2.listing_id\n                LEFT JOIN trade t2 ON t2.id = l2.source_trade_id\n                LEFT JOIN corporate_action ca2 ON ca2.id = l2.source_ca_id\n                WHERE li2.currency_code = li.currency_code\n            )                                                                   AS \"earliest_acquisition: NaiveDate\"\n        FROM listing li\n        WHERE li.currency_code != 'EUR'\n          AND li.delisted_at IS NULL\n          AND EXISTS (\n              SELECT 1 FROM lot l3\n              LEFT JOIN lot_close lc3 ON lc3.lot_id = l3.id\n              WHERE l3.listing_id = li.id AND lc3.lot_id IS NULL\n          )\n        GROUP BY li.currency_code\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "currency!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_rate_date: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "earliest_acquisition: NaiveDate",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "a1f4fdabb916e6fe719df09700cb4e5a0095b827b515c7f000d27824e07b47f7"
+}

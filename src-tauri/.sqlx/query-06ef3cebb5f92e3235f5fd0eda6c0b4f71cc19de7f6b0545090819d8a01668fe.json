@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO fx_rate (date, currency, rate_to_eur, source)\n            VALUES (?1, ?2, ?3, ?4)\n            ON CONFLICT (date, currency, source) DO UPDATE SET\n                rate_to_eur = excluded.rate_to_eur\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "06ef3cebb5f92e3235f5fd0eda6c0b4f71cc19de7f6b0545090819d8a01668fe"
+}

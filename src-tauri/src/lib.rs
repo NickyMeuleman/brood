@@ -36,6 +36,9 @@ pub enum AppError {
 
     #[error("Internal server error")]
     Internal,
+
+    #[error("Timeout error")]
+    Timeout(String),
 }
 
 impl From<sqlx::Error> for AppError {

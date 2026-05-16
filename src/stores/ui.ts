@@ -40,7 +40,7 @@ function applyUpdater<T>(updater: Updater<T>, current: T): T {
 export const useUIStore = create<UIState>((set, get) => ({
 	includeFees: true,
 	displayInEur: false,
-	period: "AllTime",
+	period: "Ytd",
 	sorting: [{ id: "agg_identity", desc: false }],
 	columnVisibility: defaultColumnVisibility,
 	setIncludeFees: (v) => set({ includeFees: v }),

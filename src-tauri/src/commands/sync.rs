@@ -1,9 +1,12 @@
+use std::time::Duration;
+
 use crate::db::Db;
 use crate::sync::fx::{sync_all_fx, FXSyncOutcome};
 use crate::sync::prices::{sync_all_prices, sync_one_listing, PriceSyncOutcome, PriceSyncTask};
 use crate::{mic_timezone, AppError, HttpClient};
 use chrono::{NaiveDate, Utc};
 use tauri::State;
+use tokio;
 
 #[derive(Debug, serde::Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "camelCase")]
@@ -18,18 +21,22 @@ pub async fn sync(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<SyncOutcomes, AppError> {
-    let (fx_outcomes, prices_outcomes) = tokio::try_join!(
-        sync_all_fx(&db.pool, &http.client),
-        sync_all_prices(&db.pool, &http.client)
-    )?;
+    let sync_task = async {
+        let (fx_outcomes, prices_outcomes) = tokio::try_join!(
+            sync_all_fx(&db.pool, &http.client),
+            sync_all_prices(&db.pool, &http.client)
+        )?;
 
-    dbg!("fx outcomes: ", &fx_outcomes);
-    dbg!("price outcomes: ", &prices_outcomes);
+        Ok(SyncOutcomes {
+            fx: fx_outcomes,
+            prices: prices_outcomes,
+        })
+    };
 
-    Ok(SyncOutcomes {
-        fx: fx_outcomes,
-        prices: prices_outcomes,
-    })
+    match tokio::time::timeout(Duration::from_secs(15), sync_task).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::Timeout("Sync timed out after 15s".into())),
+    }
 }
 
 #[tauri::command]

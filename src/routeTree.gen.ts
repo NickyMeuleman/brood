@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as TradeRouteRouteImport } from './routes/trade/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TradeIndexRouteImport } from './routes/trade/index'
@@ -19,6 +20,11 @@ import { Route as TradeBuyRouteImport } from './routes/trade/buy'
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TradeRouteRoute = TradeRouteRouteImport.update({
@@ -50,6 +56,7 @@ const TradeBuyRoute = TradeBuyRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/trade': typeof TradeRouteRouteWithChildren
+  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
@@ -66,6 +74,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/trade': typeof TradeRouteRouteWithChildren
+  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
@@ -76,16 +85,18 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/trade'
+    | '/admin'
     | '/history'
     | '/trade/buy'
     | '/trade/sell'
     | '/trade/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/trade/buy' | '/trade/sell' | '/trade'
+  to: '/' | '/admin' | '/history' | '/trade/buy' | '/trade/sell' | '/trade'
   id:
     | '__root__'
     | '/'
     | '/trade'
+    | '/admin'
     | '/history'
     | '/trade/buy'
     | '/trade/sell'
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   TradeRouteRoute: typeof TradeRouteRouteWithChildren
+  AdminRoute: typeof AdminRoute
   HistoryRoute: typeof HistoryRoute
 }
 
@@ -105,6 +117,13 @@ declare module '@tanstack/react-router' {
       path: '/history'
       fullPath: '/history'
       preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/trade': {
@@ -164,6 +183,7 @@ const TradeRouteRouteWithChildren = TradeRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   TradeRouteRoute: TradeRouteRouteWithChildren,
+  AdminRoute: AdminRoute,
   HistoryRoute: HistoryRoute,
 }
 export const routeTree = rootRouteImport

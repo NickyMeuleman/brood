@@ -33,6 +33,7 @@ const navData: NavItem[] = [
 			{ title: "Sell", to: "/trade/sell" },
 		],
 	},
+	{ title: "Admin", to: "/admin" },
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { commands } from "../bindings";
 
 export function useSync() {
-  // not a useMutation because it's a 1 time sync
+	const queryClient = useQueryClient();
+
+	// not a useMutation because it's a 1 time sync
 	return useQuery({
 		queryKey: ["sync"],
 		queryFn: async () => {
@@ -10,6 +12,9 @@ export function useSync() {
 			if (res.status === "error") {
 				throw res.error;
 			}
+
+			queryClient.invalidateQueries({ queryKey: ["holdings"] });
+
 			return res.data;
 		},
 		staleTime: Infinity,
