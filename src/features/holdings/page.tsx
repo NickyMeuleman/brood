@@ -21,7 +21,7 @@ const HoldingsPage = () => {
 		queryKey: ["holdings", period],
 		queryFn: async () => {
 			const res = await commands.getHoldings(period);
-			if (res.status === "error") throw new Error("oops");
+			if (res.status === "error") throw res.error;
 			return res.data;
 		},
 	});

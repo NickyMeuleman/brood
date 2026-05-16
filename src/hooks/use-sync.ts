@@ -1,23 +1,32 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { useSyncStore } from "@/stores/sync";
 import { commands } from "../bindings";
 
 export function useSync() {
 	const queryClient = useQueryClient();
+	const { setStatus, setSubmittedAt, setError } = useSyncStore();
 
-	// not a useMutation because it's a 1 time sync
-	return useQuery({
-		queryKey: ["sync"],
-		queryFn: async () => {
+	return useMutation({
+		mutationFn: async () => {
 			const res = await commands.sync();
 			if (res.status === "error") {
 				throw res.error;
 			}
-
-			queryClient.invalidateQueries({ queryKey: ["holdings"] });
-
 			return res.data;
 		},
-		staleTime: Infinity,
-		retry: false,
+		onMutate: () => {
+			setStatus("pending");
+			setSubmittedAt(Date.now());
+			setError(null);
+		},
+		onSuccess: () => {
+			setStatus("success");
+			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+		},
+		onError: (e) => {
+			setStatus("error");
+			setError(e);
+		},
 	});
 }

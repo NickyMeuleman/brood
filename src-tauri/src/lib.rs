@@ -9,7 +9,10 @@ mod sync;
 
 use chrono_tz::Tz;
 use commands::holdings::get_holdings;
-use commands::sync::{sync, sync_fx, sync_prices};
+use commands::sync::{
+    force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
+    force_update_one_listing_prices, sync, sync_fx, sync_prices,
+};
 use db::init_db;
 use reqwest;
 use rust_decimal::Decimal;
@@ -57,8 +60,16 @@ pub struct HttpClient {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder =
-        Builder::new().commands(collect_commands![get_holdings, sync, sync_fx, sync_prices]);
+    let builder = Builder::new().commands(collect_commands![
+        get_holdings,
+        sync,
+        sync_fx,
+        sync_prices,
+        force_update_all_prices,
+        force_update_one_listing_prices,
+        force_update_all_fx,
+        force_update_one_currency_fx
+    ]);
 
     #[cfg(debug_assertions)]
     builder

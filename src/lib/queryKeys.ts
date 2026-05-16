@@ -1,3 +1,3 @@
-const queryKeys = {};
-
-export default queryKeys;
+export const queryKeys = {
+	holdings: ["holdings"] as const,
+};

@@ -3,6 +3,7 @@ import { FormDevtoolsPanel } from "@tanstack/react-form-devtools";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { createRootRoute, Outlet, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { useEffect } from "react";
 import { AppShell } from "@/features/appshell/page";
 import { useSync } from "@/hooks/use-sync";
 // import { ReactTableDevtoolsPanel } from "@tanstack/react-table-devtools";
@@ -11,12 +12,13 @@ export default function RouteComponent() {
 	const matches = useMatches();
 	const sync = useSync();
 
+	useEffect(() => {
+		sync.mutate();
+	}, [sync.mutate]);
+
 	return (
 		<>
-			<AppShell
-				matches={matches.filter((m) => m.staticData?.title)}
-				sync={sync}
-			>
+			<AppShell matches={matches.filter((m) => m.staticData?.title)}>
 				<Outlet />
 			</AppShell>
 			<TanStackDevtools

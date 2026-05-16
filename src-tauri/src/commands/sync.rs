@@ -1,10 +1,9 @@
-use std::time::Duration;
-
 use crate::db::Db;
-use crate::sync::fx::{sync_all_fx, FXSyncOutcome};
+use crate::sync::fx::{sync_all_fx, sync_one_currency, FXSyncOutcome, FxSyncTask};
 use crate::sync::prices::{sync_all_prices, sync_one_listing, PriceSyncOutcome, PriceSyncTask};
 use crate::{mic_timezone, AppError, HttpClient};
 use chrono::{NaiveDate, Utc};
+use std::time::Duration;
 use tauri::State;
 use tokio;
 
@@ -67,7 +66,7 @@ pub async fn force_update_one_listing_prices(
     listing_id: i64,
     mic: String,
     ticker: String,
-) -> Result<usize, AppError> {
+) -> Result<PriceSyncOutcome, AppError> {
     let tz = mic_timezone(&mic).map_err(|_| AppError::Internal)?;
     let to = Utc::now()
         .with_timezone(&tz)
@@ -92,13 +91,14 @@ pub async fn force_update_one_listing_prices(
 
     let task = PriceSyncTask {
         listing_id,
-        ticker,
+        ticker: ticker.clone(),
         mic,
         from,
         to,
     };
 
-    sync_one_listing(&db.pool, &http.client, &task).await
+    let added = sync_one_listing(&db.pool, &http.client, &task).await?;
+    Ok(PriceSyncOutcome::Success { ticker, added })
 }
 
 #[tauri::command]
@@ -157,6 +157,95 @@ pub async fn force_update_all_prices(
             }),
             Err(e) => outcomes.push(PriceSyncOutcome::Error {
                 ticker: row.ticker,
+                message: e.to_string(),
+            }),
+        }
+    }
+
+    Ok(outcomes)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn force_update_one_currency_fx(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+    currency: String,
+) -> Result<FXSyncOutcome, AppError> {
+    let to = Utc::now().date_naive().pred_opt().expect("valid date");
+    let from = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) AS "d: NaiveDate"
+        FROM lot l
+        LEFT JOIN listing li ON li.id = l.listing_id
+        LEFT JOIN trade t    ON t.id  = l.source_trade_id
+        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
+        WHERE li.currency_code = ?
+        "#,
+        currency
+    )
+    .fetch_one(&db.pool)
+    .await?
+    .unwrap_or(to);
+
+    let task = FxSyncTask {
+        currency: currency.clone(),
+        from,
+        to,
+    };
+
+    let added = sync_one_currency(&db.pool, &http.client, &task).await?;
+    Ok(FXSyncOutcome::Success { currency, added })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn force_update_all_fx(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+) -> Result<Vec<FXSyncOutcome>, AppError> {
+    let to = Utc::now().date_naive().pred_opt().expect("valid date");
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            li.currency_code AS "currency!",
+            MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))
+                AS "earliest: NaiveDate"
+        FROM lot l
+        LEFT JOIN listing li            ON li.id  = l.listing_id
+        LEFT JOIN lot_close lc          ON lc.lot_id = l.id
+        LEFT JOIN trade t               ON t.id   = l.source_trade_id
+        LEFT JOIN corporate_action ca   ON ca.id  = l.source_ca_id
+        WHERE li.currency_code != 'EUR'
+          AND li.delisted_at IS NULL
+          AND lc.lot_id IS NULL
+        GROUP BY li.currency_code
+        "#
+    )
+    .fetch_all(&db.pool)
+    .await?;
+
+    let mut outcomes = Vec::new();
+    for (i, row) in rows.into_iter().enumerate() {
+        if i > 0 {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+
+        let from = row.earliest.unwrap_or(to);
+        let task = FxSyncTask {
+            currency: row.currency.clone(),
+            from,
+            to,
+        };
+
+        match sync_one_currency(&db.pool, &http.client, &task).await {
+            Ok(added) => outcomes.push(FXSyncOutcome::Success {
+                currency: row.currency,
+                added,
+            }),
+            Err(e) => outcomes.push(FXSyncOutcome::Error {
+                currency: row.currency,
                 message: e.to_string(),
             }),
         }

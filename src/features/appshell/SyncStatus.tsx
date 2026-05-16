@@ -1,18 +1,19 @@
-import type { UseQueryResult } from "@tanstack/react-query";
+import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSyncStore } from "@/stores/sync";
 
-export function SyncStatus({
-	sync,
-}: {
-	sync: UseQueryResult<SyncOutcomes, Error>;
-}) {
-	const { isLoading, isError, data, dataUpdatedAt } = sync;
-	if (!isLoading && !isError && !data) return null;
+export function SyncStatus() {
+	const { status, submittedAt, error } = useSyncStore();
+	if (status === "idle") return null;
+
+	const isLoading = status === "pending";
+	const isError = status === "error";
+	const isSuccess = status === "success";
 
 	return (
 		<TooltipProvider>
@@ -26,7 +27,7 @@ export function SyncStatus({
 
 							{isError && <AlertCircle className="h-4 w-4 text-destructive" />}
 
-							{!isLoading && !isError && data && (
+							{isSuccess && (
 								<CheckCircle2 className="h-4 w-4 text-emerald-500 transition-opacity duration-1000" />
 							)}
 						</div>
@@ -39,7 +40,12 @@ export function SyncStatus({
 							{isError && "Sync failed. Check your connection."}
 							{!isLoading && !isError && "Market data up to date"}
 						</p>
-						<p>Last synced on: {new Date(dataUpdatedAt).toDateString()}</p>
+						{submittedAt && (
+							<p>Last synced at: {new Date(submittedAt).toDateString()}</p>
+						)}
+						{isError && error && (
+							<p className="text-destructive">{error.message}</p>
+						)}
 					</div>
 				</TooltipContent>
 			</Tooltip>

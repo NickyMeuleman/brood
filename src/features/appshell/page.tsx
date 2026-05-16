@@ -1,4 +1,4 @@
-import type { UseQueryResult } from "@tanstack/react-query";
+import type { UseMutationResult } from "@tanstack/react-query";
 import { type AnyRouteMatch, Link } from "@tanstack/react-router";
 import { Fragment } from "react";
 import type { SyncOutcomes } from "@/bindings";
@@ -22,11 +22,9 @@ import { SyncStatus } from "./SyncStatus";
 export function AppShell({
 	children,
 	matches,
-	sync,
 }: {
 	children: React.ReactNode;
 	matches: AnyRouteMatch[];
-	sync: UseQueryResult<SyncOutcomes, Error>;
 }) {
 	return (
 		<SidebarProvider>
@@ -39,7 +37,7 @@ export function AppShell({
 							orientation="vertical"
 							className="h-4 data-vertical:self-center"
 						/>
-						<Breadcrumb className="">
+						<Breadcrumb>
 							<BreadcrumbList>
 								{matches.map((match, index) => {
 									const isLast = index === matches.length - 1;
@@ -67,7 +65,7 @@ export function AppShell({
 							</BreadcrumbList>
 						</Breadcrumb>
 					</div>
-					<SyncStatus sync={sync} />
+					<SyncStatus />
 				</header>
 				<div className="m-4">{children}</div>
 			</SidebarInset>
