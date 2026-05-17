@@ -4,6 +4,7 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { createRootRoute, Outlet, useMatches } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/features/appshell/page";
 import { useSync } from "@/hooks/use-sync";
 // import { ReactTableDevtoolsPanel } from "@tanstack/react-table-devtools";
@@ -21,6 +22,7 @@ export default function RouteComponent() {
 			<AppShell matches={matches.filter((m) => m.staticData?.title)}>
 				<Outlet />
 			</AppShell>
+			<Toaster position="top-center" richColors />
 			<TanStackDevtools
 				plugins={[
 					{

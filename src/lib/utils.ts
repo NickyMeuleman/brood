@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Period } from "@/bindings";
+import type { FXSyncOutcome, Period, PriceSyncOutcome } from "@/bindings";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -66,3 +66,17 @@ export const PERIOD_LABEL: Record<Period, string> = {
 	AllTime: "all",
 } as const;
 export const PERIODS = Object.keys(PERIOD_LABEL) as Period[];
+
+export function unwrapPriceOutcome(outcome: PriceSyncOutcome) {
+	if (outcome.status === "error") {
+		throw new Error(`${outcome.ticker}: ${outcome.message}`);
+	}
+	return outcome;
+}
+
+export function unwrapFxOutcome(outcome: FXSyncOutcome) {
+	if (outcome.status === "error") {
+		throw new Error(`${outcome.currency}: ${outcome.message}`);
+	}
+	return outcome;
+}
