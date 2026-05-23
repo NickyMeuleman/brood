@@ -14,6 +14,8 @@ import {
 	useForceUpdateOneCurrencyFx,
 	useForceUpdateOneListingPrices,
 } from "@/hooks/use-force-sync";
+import { getErrorMessage } from "@/lib/errors";
+import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -26,10 +28,10 @@ function RouteComponent() {
 	const allFx = useForceUpdateAllFx();
 
 	const { data: holdingsData } = useQuery({
-		queryKey: ["holdings", "AllTime"],
+		queryKey: queryKeys.holdingsByPeriod("AllTime"),
 		queryFn: async () => {
 			const res = await commands.getHoldings("AllTime");
-			if (res.status === "error") throw res.error;
+			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return res.data;
 		},
 	});

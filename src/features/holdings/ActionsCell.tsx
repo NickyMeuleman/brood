@@ -1,10 +1,5 @@
 import type { CellContext } from "@tanstack/react-table";
-import {
-	AlertCircle,
-	CheckCircle2,
-	MoreHorizontal,
-	RefreshCw,
-} from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -54,7 +49,8 @@ export function ActionsCell({ row }: CellContext<HoldingRow, unknown>) {
 					<DropdownMenuGroup>
 						<DropdownMenuLabel>Admin</DropdownMenuLabel>
 						<DropdownMenuItem
-							onClick={async () => {
+							disabled={syncPrices.isPending}
+							onClick={() => {
 								syncPrices.mutate({ listing_id, exchange_mic, ticker });
 							}}
 						>
@@ -62,7 +58,7 @@ export function ActionsCell({ row }: CellContext<HoldingRow, unknown>) {
 						</DropdownMenuItem>
 						{row.original.currency_code !== "EUR" && (
 							<DropdownMenuItem
-								disabled={isBusy}
+								disabled={syncFx.isPending}
 								onClick={() => {
 									syncFx.mutate(row.original.currency_code);
 								}}
