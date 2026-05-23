@@ -72,7 +72,6 @@ function RouteComponent() {
 						disabled={allPrices.isPending}
 						onClick={() => allPrices.mutate()}
 					>
-						{allPrices.isPending && <RefreshCw className="animate-spin" />}
 						Force update all prices
 					</Button>
 					<MutationStatus mutation={allPrices} />
@@ -97,7 +96,6 @@ function RouteComponent() {
 						disabled={allFx.isPending}
 						onClick={() => allFx.mutate()}
 					>
-						{allFx.isPending && <RefreshCw className="animate-spin" />}
 						Force update all FX rates
 					</Button>
 					<MutationStatus mutation={allFx} />
