@@ -1,4 +1,6 @@
 pub mod holdings;
+pub mod lot_data;
+pub mod chart;
 pub mod sync;
 
 use crate::{parse_decimal, AppError};
@@ -7,7 +9,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::{Pool, Sqlite};
-use std::ops::AddAssign;
+use std::{collections::BTreeMap, ops::AddAssign};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 pub struct Metrics {
@@ -138,6 +140,16 @@ pub enum Period {
     FiveYears,
     Ytd,
     AllTime,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
+pub struct DayTotals {
+    pub value_eur: Decimal,
+    pub invested_eur: NetGross<Decimal>, // gross = no fees, net = with fees
+}
+
+pub fn latest_on_or_before<V: Copy>(map: &BTreeMap<NaiveDate, V>, date: NaiveDate) -> Option<V> {
+    map.range(..=date).next_back().map(|(_, &v)| v)
 }
 
 pub async fn get_rate(

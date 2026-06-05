@@ -8,6 +8,7 @@ mod db;
 mod sync;
 
 use chrono_tz::Tz;
+use commands::chart::get_portfolio_history;
 use commands::holdings::get_holdings;
 use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
@@ -62,6 +63,7 @@ pub struct HttpClient {
 pub fn run() {
     let builder = Builder::new().commands(collect_commands![
         get_holdings,
+        get_portfolio_history,
         sync,
         sync_fx,
         sync_prices,
