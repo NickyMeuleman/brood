@@ -31,4 +31,4 @@ db-reset:
   just prepare
 
 seed: db-reset
-  cd src-tauri && sqlite3 {{dev_db}} < seeds/basic_dev_seed.sql
+  cd src-tauri && sqlite3 {{dev_db}} < seeds/dev.sql
