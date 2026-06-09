@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            l.id AS \"lot_id!\",\n            ca.effective_date AS \"effective_date!: NaiveDate\"\n        FROM lot l\n        JOIN corporate_action ca ON ca.id = l.source_ca_id\n        WHERE l.source_ca_id IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "lot_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "effective_date!: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "853dc568f050bdb323bb76a04caf444f24d217def968eaecaad9c3d53adf5b48"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            lot_id,\n            closed_at AS \"closed_at: NaiveDateTime\"\n        FROM lot_close\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "lot_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "closed_at: NaiveDateTime",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "705ded4d4fde134ddf6ea6b971e4cd7efb77a9e1a0b58e91ad7f01fff4d4f659"
+}

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            date AS \"date!: NaiveDate\",\n            currency,\n            rate_to_eur\n        FROM fx_rate\n        ORDER BY date\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "date!: NaiveDate",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "currency",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "rate_to_eur",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b6df03444233ecf09b538fd52b95985ed7144c038a233e0db8631c4d1e507d6d"
+}

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            sa.origin_lot_id,\n            sa.quantity,\n            DATE(t.executed_at) AS \"sell_date!: NaiveDate\"\n        FROM sell_allocation sa\n        JOIN trade t ON t.id = sa.sell_trade_id\n        ORDER BY sa.origin_lot_id, t.executed_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "origin_lot_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "quantity",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "sell_date!: NaiveDate",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "05ab9c3072ddcf3d6afe8cd595de2b4b0f3eeb9c664dc61f1ed108808d7370f7"
+}

@@ -37,8 +37,8 @@ pub struct LotRecord {
     /// Original trade execution date, propagated up the `parent_lot_id` chain.
     /// This is the date used to look up the correct historical FX rate for
     /// cost-basis calculations, even for post-split CA lots.
-    pub acquisition_cost_date: NaiveDate,
-    /// EUR/listing_currency rate on `acquisition_cost_date`. Already resolved
+    pub acquisition_date: NaiveDate,
+    /// EUR/listing_currency rate on `acquisition_date`. Already resolved
     /// so callers never need to touch the FX table for cost calculations.
     pub acquisition_fx_rate: Decimal,
 
@@ -94,6 +94,15 @@ impl LotRecord {
     }
 }
 
+// Both converted at the trade's execution date. At the moment the fee was actually paid.
+// fees.local: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
+//   Used for cost basis arithmetic in listing currency.
+//   This means this is not a real payment, it's a derived intermediate
+//   (parts of the total fee amount can be paid in EUR, eg. re=bel broker fees in EUR instead of listing_currency)
+// fees_eur: all fees in EUR (if needed, different currency parts were converted via historical rate.)
+//   Historically accurate total fees in EUR.
+//   This means this is not a real payment, it's a derived intermediate
+//   (parts of the total fee amount can be paid in listing_currency, not EUR)
 struct TradeFeeAgg {
     trade_qty: Decimal,
     fees: CurrencyPair<Decimal>,
@@ -108,6 +117,11 @@ struct TradeFeeAgg {
 pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, AppError> {
     // ---- 1. All lots -------------------------------------------------------
     // ORDER BY l.id ASC is vital for handling child CA lots topologically!
+    // all lots, needed because some open lots (CA-originated lots) lack info about the time of the
+    // price_per_unit at original acquisition time.
+    // This info is needed to build a historically correct unit_price_basis_eur
+    // that uses FX rates of each moment that lot's shares were bought
+    // qty_at_acquisition and price_per_unit are needed for accurate fee proportional attribution
     let raw_lots = sqlx::query!(
         r#"
         SELECT
@@ -238,9 +252,6 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             fee * rate
         };
 
-        // Express fee in listing currency for local performance calculations.
-        // question: some stocks have mixed currency fees, eg broker fees in eur and stamp duty in
-        // pounds
         let fee_local = if r.fee_currency == r.listing_currency {
             fee
         } else if r.listing_currency == "EUR" {
@@ -259,11 +270,10 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         };
 
         let entry = fee_by_trade.entry(r.trade_id).or_insert(TradeFeeAgg {
+            // trade_qty is identical for every fee row of the same trade
             trade_qty,
             fees: CurrencyPair::default(),
         });
-        // trade_qty is identical for every fee row of the same trade; overwriting is idempotent.
-        entry.trade_qty = trade_qty;
         entry.fees.local += fee_local;
         entry.fees.eur += fee_eur;
     }
@@ -300,9 +310,9 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     // ID order guarantees every parent is resolved before its children.
     //
     // For each lot we compute:
-    //   acquisition_cost_date — the original trade date, propagated upward
-    //   fees                  — attributed portion of trade fees, split by cost ratio
-    let mut acquisition_cost_dates: HashMap<i64, NaiveDate> = HashMap::new();
+    //   acquisition_date  — the original trade date, propagated upward
+    //   fees              — attributed portion of trade fees, split by cost ratio
+    let mut acquisition_dates: HashMap<i64, NaiveDate> = HashMap::new();
     let mut lot_fees: HashMap<i64, CurrencyPair<Decimal>> = HashMap::new();
     let mut lot_costs: HashMap<i64, Decimal> = HashMap::new();
 
@@ -312,7 +322,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         let cost = qty * price;
         lot_costs.insert(r.lot_id, cost);
 
-        let (acq_date, fees) = match (r.source_trade_id, r.parent_lot_id) {
+        let (acquisition_date, fees) = match (r.source_trade_id, r.parent_lot_id) {
             // Trade-originated lot: use the trade's execution date directly.
             (Some(trade_id), _) => {
                 let date = r
@@ -342,11 +352,10 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
 
                 (date, fees)
             }
-
             // CA-originated lot: inherit date and fees from the parent,
             // proportioned by the ratio of this lot's cost to the parent's cost.
             (None, Some(parent_id)) => {
-                let parent_acq = *acquisition_cost_dates.get(&parent_id).ok_or_else(|| {
+                let parent_date = *acquisition_dates.get(&parent_id).ok_or_else(|| {
                     AppError::Database(format!(
                         "Parent lot {parent_id} not yet processed before child lot {}",
                         r.lot_id
@@ -370,7 +379,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                     eur: parent_fees.eur * ratio,
                 };
 
-                (parent_acq, fees)
+                (parent_date, fees)
             }
 
             (None, None) => {
@@ -381,7 +390,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             }
         };
 
-        acquisition_cost_dates.insert(r.lot_id, acq_date);
+        acquisition_dates.insert(r.lot_id, acquisition_date);
         lot_fees.insert(r.lot_id, fees);
     }
 
@@ -389,17 +398,17 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     let mut records = Vec::with_capacity(raw_lots.len());
 
     for r in &raw_lots {
-        let acq_cost_date = acquisition_cost_dates[&r.lot_id];
+        let acquisition_date = acquisition_dates[&r.lot_id];
 
         let acquisition_fx_rate = if r.currency_code == "EUR" {
             Decimal::ONE
         } else {
             all_rates
                 .get(&r.currency_code)
-                .and_then(|m| latest_on_or_before(m, acq_cost_date))
+                .and_then(|m| latest_on_or_before(m, acquisition_date))
                 .ok_or_else(|| {
                     AppError::Database(format!(
-                        "No FX rate for {} on {acq_cost_date} (lot {} acquisition)",
+                        "No FX rate for {} on {acquisition_date} (lot {} acquisition)",
                         r.currency_code, r.lot_id
                     ))
                 })?
@@ -408,7 +417,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         // Trade lots exist from their trade execution date.
         // CA lots exist from the corporate action's effective date.
         let existence_start = if r.source_trade_id.is_some() {
-            acq_cost_date
+            acquisition_date
         } else {
             *ca_start_dates.get(&r.lot_id).ok_or_else(|| {
                 AppError::Database(format!(
@@ -431,7 +440,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             price_per_unit: parse_decimal(&r.price_per_unit, "price_per_unit")?,
             existence_start,
             close_date: lot_close_dates.get(&r.lot_id).copied(),
-            acquisition_cost_date: acq_cost_date,
+            acquisition_date,
             acquisition_fx_rate,
             fees: lot_fees[&r.lot_id],
             // remove() is fine here: raw_lots is borrowed immutably,

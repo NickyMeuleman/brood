@@ -1,7 +1,7 @@
 use crate::commands::lot_data::load_lot_records;
-use crate::commands::{latest_on_or_before, DayTotals, NetGross, Period};
+use crate::commands::{latest_on_or_before, period_start, DayTotals, NetGross, Period};
 use crate::{db::Db, parse_decimal, AppError};
-use chrono::{Datelike, Days, Months, NaiveDate, Utc};
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use specta::Type;
@@ -26,17 +26,7 @@ pub async fn get_portfolio_history(
     period: Period,
 ) -> Result<PortfolioHistory, AppError> {
     let today = Utc::now().date_naive();
-
-    let period_start = match period {
-        Period::AllTime => None,
-        Period::FiveDays => today.checked_sub_days(Days::new(5)),
-        Period::OneMonth => today.checked_sub_months(Months::new(1)),
-        Period::SixMonths => today.checked_sub_months(Months::new(6)),
-        Period::OneYear => today.checked_sub_months(Months::new(12)),
-        Period::FiveYears => today.checked_sub_months(Months::new(60)),
-        Period::Ytd => NaiveDate::from_ymd_opt(today.year(), 1, 1),
-    };
-
+    let period_start = period_start(today, period);
     let lot_records = load_lot_records(&db.pool).await?;
 
     if lot_records.is_empty() {

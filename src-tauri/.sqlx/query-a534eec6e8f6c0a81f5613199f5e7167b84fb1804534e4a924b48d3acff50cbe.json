@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) AS \"d: NaiveDate\"\n        FROM lot l\n        LEFT JOIN listing li ON li.id = l.listing_id\n        LEFT JOIN trade t    ON t.id  = l.source_trade_id\n        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id\n        WHERE li.currency_code = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "d: NaiveDate",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "a534eec6e8f6c0a81f5613199f5e7167b84fb1804534e4a924b48d3acff50cbe"
+}

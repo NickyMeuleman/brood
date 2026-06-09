@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            listing_id,\n            date AS \"date!: NaiveDate\",\n            close\n        FROM price_history\n        WHERE date <= ?1\n        ORDER BY listing_id, date\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "listing_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "date!: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "close",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "73f406370d69cba6ec3a6f72c1fa77c1533bc2fd5e3a09b7ae753996d651ddef"
+}

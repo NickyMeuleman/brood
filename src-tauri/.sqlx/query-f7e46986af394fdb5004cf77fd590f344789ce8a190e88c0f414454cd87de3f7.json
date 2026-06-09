@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            li.currency_code AS \"currency!\",\n            MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))\n                AS \"earliest: NaiveDate\"\n        FROM lot l\n        LEFT JOIN listing li            ON li.id  = l.listing_id\n        LEFT JOIN lot_close lc          ON lc.lot_id = l.id\n        LEFT JOIN trade t               ON t.id   = l.source_trade_id\n        LEFT JOIN corporate_action ca   ON ca.id  = l.source_ca_id\n        WHERE li.currency_code != 'EUR'\n          AND li.delisted_at IS NULL\n          AND lc.lot_id IS NULL\n        GROUP BY li.currency_code\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "currency!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "earliest: NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "f7e46986af394fdb5004cf77fd590f344789ce8a190e88c0f414454cd87de3f7"
+}

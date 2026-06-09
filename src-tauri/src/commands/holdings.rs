@@ -1,10 +1,11 @@
+use crate::commands::lot_data::load_lot_records;
 use crate::commands::{
-    get_rate, CurrencyPair, NetGross, Performance, Period, PeriodContext, Snapshot,
+    period_start, CurrencyPair, NetGross, Performance, Period, PeriodContext, Snapshot,
 };
 use crate::db::types::InstrumentType;
 use crate::db::Db;
 use crate::{parse_decimal, AppError};
-use chrono::{Datelike, Days, Months, NaiveDate, NaiveDateTime, Utc};
+use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::Serialize;
 use specta::Type;
@@ -68,6 +69,7 @@ pub struct TotalsEUR {
     all_time: Performance,
     period: Performance,
 }
+
 /// manual impl to start at Some(0) instead of None (start valid at 0 instead of invalid)
 impl Default for TotalsEUR {
     fn default() -> Self {
@@ -86,20 +88,6 @@ pub struct Envelope {
     totals: TotalsEUR,
 }
 
-// Both converted at the trade's execution date. At the moment the fee was actually paid.
-// fees.local: all fees in listing currency (if needed, EUR parts are converted via historical cross-rate.)
-//   Used for cost basis arithmetic in listing currency.
-//   This means this is not a real payment, it's a derived intermediate
-//   (parts of the total fee amount can be paid in EUR, eg. re=bel broker fees in EUR instead of listing_currency)
-// fees_eur: all fees in EUR (if needed, different currency parts were converted via historical rate.)
-//   Historically accurate total fees in EUR.
-//   This means this is not a real payment, it's a derived intermediate
-//   (parts of the total fee amount can be paid in listing_currency, not EUR)
-struct TradeFeeAgg {
-    trade_qty: Decimal,
-    fees: CurrencyPair<Decimal>,
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 struct PeriodStart {
     value: Option<CurrencyPair<Decimal>>,
@@ -110,178 +98,15 @@ struct PeriodStart {
 #[specta::specta]
 pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope, AppError> {
     let today = Utc::now().date_naive();
-    let period_start_date = match period {
-        Period::AllTime => None,
-        Period::FiveDays => today.checked_sub_days(Days::new(5)),
-        Period::OneMonth => today.checked_sub_months(Months::new(1)),
-        Period::SixMonths => today.checked_sub_months(Months::new(6)),
-        Period::OneYear => today.checked_sub_months(Months::new(12)),
-        Period::FiveYears => today.checked_sub_months(Months::new(60)),
-        Period::Ytd => NaiveDate::from_ymd_opt(today.year(), 1, 1),
-    };
-
-    let open_lots = sqlx::query!(
-        r#"
-        SELECT 
-            l.id,
-            l.qty_at_acquisition,
-            l.listing_id,
-            l.price_per_unit,
-            li.currency_code,
-            li.ticker,
-            li.exchange_mic,
-            i.name,
-            i.isin,
-            i.instrument_type as "instrument_type: InstrumentType"
-        FROM lot l
-        JOIN listing li ON li.id = l.listing_id
-        JOIN instrument i ON i.id = l.instrument_id
-        WHERE l.id NOT IN (SELECT lot_id FROM lot_close)
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await
-    .map_err(AppError::from)?;
-
-    // all lots, needed because some open lots (CA-originated lots) lack info about the time of the
-    // price_per_unit at original acquisition time.
-    // This info is needed to build a historically correct unit_price_basis_eur
-    // that uses FX rates of each moment that lot's shares were bought
-    // qty_at_acquisition and price_per_unit are needed for accurate fee proportional attribution
-    let all_lots = sqlx::query!(
-        r#"
-        SELECT
-            l.id,
-            l.parent_lot_id,
-            l.source_trade_id,
-            l.qty_at_acquisition,
-            l.price_per_unit,
-            t.executed_at AS "executed_at: NaiveDateTime"  -- NULL for CA lots
-        FROM lot l
-        LEFT JOIN trade t ON t.id = l.source_trade_id
-        ORDER BY l.id ASC
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await
-    .map_err(AppError::from)?;
-
-    let fee_rows = sqlx::query!(
-        r#"
-        SELECT
-            t.id             AS trade_id,
-            t.quantity       AS trade_qty,
-            t.executed_at    AS "executed_at: NaiveDateTime",
-            li.currency_code AS listing_currency,
-            tf.amount        AS fee_amount,
-            tf.currency_code AS fee_currency
-        FROM trade t
-        JOIN trade_fee tf ON tf.trade_id = t.id
-        JOIN listing li   ON li.id = t.listing_id
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await
-    .map_err(AppError::from)?;
-
-    // trade_id -> TradeFeeAgg
-    let mut fee_by_trade: HashMap<i64, TradeFeeAgg> = HashMap::new();
-    for r in fee_rows {
-        let fee = parse_decimal(&r.fee_amount, "fee amount")?;
-        let date = r.executed_at.date();
-        let fee_eur = fee * get_rate(&db.pool, &r.fee_currency, date).await?;
-        let fee_listing = if r.fee_currency == r.listing_currency {
-            // no conversion needed, avoids precision loss
-            fee
-        } else {
-            fee_eur / get_rate(&db.pool, &r.listing_currency, date).await?
-        };
-        let entry = fee_by_trade.entry(r.trade_id).or_insert(TradeFeeAgg {
-            // trade_qty is identical across all fee rows for the same trade
-            trade_qty: parse_decimal(&r.trade_qty, "trade qty")?,
-            fees: CurrencyPair::default(),
-        });
-        entry.fees.local += fee_listing;
-        entry.fees.eur += fee_eur;
-    }
-
-    // lot_id -> original_acquisition_date
-    let mut acquisition_dates: HashMap<i64, NaiveDate> = HashMap::new();
-    let mut lot_fees: HashMap<i64, CurrencyPair<Decimal>> = HashMap::new();
-    let mut lot_costs: HashMap<i64, Decimal> = HashMap::new(); // for CA fee proportion only
-
-    for r in all_lots {
-        let qty = parse_decimal(&r.qty_at_acquisition, "lot qty")?;
-        let price = parse_decimal(&r.price_per_unit, "lot price")?;
-        lot_costs.insert(r.id, qty * price);
-
-        let (date, fees_listing, fees_eur) = match (r.source_trade_id, r.parent_lot_id) {
-            (Some(trade_id), _) => {
-                // Trade lot: use the trade's executed_at directly
-                let date = r
-                    .executed_at
-                    .ok_or_else(|| {
-                        AppError::Database(format!("Trade lot {} has no executed_at", r.id))
-                    })?
-                    .date();
-                let (fees_listing, fees_eur) = fee_by_trade
-                    .get(&trade_id)
-                    .map(|agg| {
-                        let ratio = qty / agg.trade_qty;
-                        (agg.fees.local * ratio, agg.fees.eur * ratio)
-                    })
-                    .unwrap_or_default();
-
-                (date, fees_listing, fees_eur)
-            }
-            (None, Some(parent_id)) => {
-                // CA lot: inherit the date from the parent, which was already processed
-                // (topological order guarantees parent comes first)
-                let date = acquisition_dates[&parent_id];
-                let ratio = lot_costs[&r.id] / lot_costs[&parent_id];
-                let fees_listing = lot_fees[&parent_id].local * ratio;
-                let fees_eur = lot_fees[&parent_id].eur * ratio;
-
-                (date, fees_listing, fees_eur)
-            }
-            (None, None) => {
-                return Err(AppError::Database(format!(
-                    "Lot {} has neither source_trade_id nor parent_lot_id",
-                    r.id
-                )))
-            }
-        };
-
-        acquisition_dates.insert(r.id, date);
-        lot_fees.insert(
-            r.id,
-            CurrencyPair {
-                local: fees_listing,
-                eur: fees_eur,
-            },
-        );
-    }
-
-    let mut sales = HashMap::new();
-    for r in sqlx::query!(
-        r#"
-        SELECT origin_lot_id, quantity
-        FROM sell_allocation
-        WHERE origin_lot_id NOT IN (SELECT lot_id FROM lot_close)
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await
-    .map_err(AppError::from)?
-    {
-        let qty = parse_decimal(&r.quantity, "sale quantity")?;
-        *sales.entry(r.origin_lot_id).or_insert(Decimal::ZERO) += qty;
-    }
+    let period_start_date = period_start(today, period);
+    let lot_records = load_lot_records(&db.pool).await?;
 
     // listing_id -> latest close
     let latest_prices: HashMap<i64, Decimal> = sqlx::query!(
         r#"
-        SELECT listing_id, close
+        SELECT
+            listing_id,
+            close
         FROM (
             SELECT 
                 listing_id, 
@@ -303,12 +128,11 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     })
     .collect::<Result<_, AppError>>()?;
 
-    // seperate batch query for latest_prices instead of calling get_rate() with the current date
-    // over and over for performance
-    // currency_code -> rate_to_eur
     let latest_rates: HashMap<String, Decimal> = sqlx::query!(
         r#"
-        SELECT currency, rate_to_eur
+        SELECT
+            currency,
+            rate_to_eur
         FROM (
             SELECT
                 currency,
@@ -325,7 +149,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     .await?
     .into_iter()
     .map(|r| {
-        let rate = parse_decimal(&r.rate_to_eur, "fx_rate price_to_eur")?;
+        let rate = parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?;
         Ok((r.currency, rate))
     })
     .collect::<Result<_, AppError>>()?;
@@ -333,7 +157,9 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let period_start_rates: HashMap<String, Decimal> = if let Some(start) = period_start_date {
         sqlx::query!(
             r#"
-        SELECT currency, rate_to_eur
+        SELECT
+            currency,
+            rate_to_eur
         FROM (
             SELECT
                 currency,
@@ -362,7 +188,10 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let splits = if let Some(start) = period_start_date {
         sqlx::query!(
             r#"
-    SELECT l.id AS listing_id, ca.ratio_from, ca.ratio_to
+    SELECT
+        l.id AS listing_id,
+        ca.ratio_from,
+        ca.ratio_to
     FROM corporate_action ca
     JOIN listing l ON l.instrument_id = ca.instrument_id
     WHERE action_type IN ('SPLIT', 'REVERSE_SPLIT')
@@ -392,7 +221,9 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let period_start_prices: HashMap<i64, Decimal> = if let Some(start) = period_start_date {
         sqlx::query!(
             r#"
-        SELECT listing_id, close
+        SELECT
+            listing_id,
+            close
         FROM (
             SELECT 
                 listing_id, 
@@ -421,25 +252,21 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     };
 
     let mut holdings = HashMap::new();
-    for lot in open_lots {
-        let initial = parse_decimal(&lot.qty_at_acquisition, "qty at acquisition")?;
-        let sold = sales.get(&lot.id).copied().unwrap_or(Decimal::ZERO);
-        let remaining = initial - sold;
-        if remaining <= Decimal::ZERO {
+    for lot in lot_records.iter().filter(|l| l.is_active_at(today)) {
+        let qty = lot.qty_remaining_at(today);
+        if qty <= Decimal::ZERO {
             continue;
         }
-        let remaining_ratio = remaining / initial;
-        let listing_id = lot.listing_id;
 
-        // or_insert: identity fields are identical for all lots of the same listing,
-        // so taking them from the first lot encountered is correct.
-        let holding = holdings.entry(listing_id).or_insert(Holding {
-            listing_id,
-            isin: lot.isin,
-            name: lot.name,
-            ticker: lot.ticker,
-            exchange_mic: lot.exchange_mic,
-            instrument_type: lot.instrument_type,
+        let h = holdings.entry(lot.listing_id).or_insert_with(|| Holding {
+            // identity fields are identical for all lots of the same listing,
+            // so taking them from the first lot encountered is correct.
+            listing_id: lot.listing_id,
+            isin: lot.isin.clone(),
+            name: lot.name.clone(),
+            ticker: lot.ticker.clone(),
+            exchange_mic: lot.exchange_mic.clone(),
+            instrument_type: lot.instrument_type.clone(),
             currency_code: lot.currency_code.clone(),
 
             quantity: Decimal::ZERO,
@@ -451,35 +278,35 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
             all_time: CostAccumulator::default(),
             period: CostAccumulator::default(),
         });
+
+        // A lot is "during the period" if it was acquired on or after period_start.
+        // For CA lots this correctly uses the original trade date (propagated
+        // through the parent chain), not the CA effective date.
+        let acq_during_period = period_start_date
+            .map(|start| lot.acquisition_date >= start)
+            // all lots are "new" for "AllTime"
+            .unwrap_or(true);
         // price_per_unit is always correct, even for CA-originated lots because it is recalculated
         // at CA time (old lot is closed, new lot with adjusted price is added)
-        let unit_price = parse_decimal(&lot.price_per_unit, "lot price per unit")?;
-        let cost = unit_price * remaining;
-        //  acquisition_dates holds all lots, this open lot has to be in it
-        let acquisition_date = acquisition_dates[&lot.id];
-        let is_during_period = period_start_date
-            .map(|start| acquisition_date >= start)
-            .unwrap_or(true); // AllTime: all lots are "new"
-        let rate = get_rate(&db.pool, &lot.currency_code, acquisition_date).await?;
-        let cost_eur = cost * rate;
-        let fees_listing = lot_fees[&lot.id].local * remaining_ratio;
-        let fees_eur = lot_fees[&lot.id].eur * remaining_ratio;
+        let cost_local = lot.price_per_unit * qty;
+        let cost_eur = lot.cost_contribution_eur(qty);
+        let fees_local = lot.fees_local_for_qty(qty);
+        let fees_eur = lot.fees_eur_for_qty(qty);
 
-        if is_during_period {
-            // Acquired during period
-            holding.period.cost.local += cost;
-            holding.period.cost.eur += cost_eur;
-            holding.period.fees.local += fees_listing;
-            holding.period.fees.eur += fees_eur;
+        if acq_during_period {
+            h.period.cost.local += cost_local;
+            h.period.cost.eur += cost_eur;
+            h.period.fees.local += fees_local;
+            h.period.fees.eur += fees_eur;
         } else {
-            // Held at period start
-            holding.period_start_quantity += remaining;
+            h.period_start_quantity += qty;
         }
-        holding.quantity += remaining;
-        holding.all_time.cost.local += cost;
-        holding.all_time.cost.eur += cost_eur;
-        holding.all_time.fees.local += fees_listing;
-        holding.all_time.fees.eur += fees_eur;
+
+        h.quantity += qty;
+        h.all_time.cost.local += cost_local;
+        h.all_time.cost.eur += cost_eur;
+        h.all_time.fees.local += fees_local;
+        h.all_time.fees.eur += fees_eur;
     }
 
     for (listing_id, h) in holdings.iter_mut() {

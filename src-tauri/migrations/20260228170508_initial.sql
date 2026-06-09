@@ -594,7 +594,8 @@ CREATE TABLE price_history (
     source IN (
       'EXCHANGE',
       'BROKER',
-      'MANUAL'
+      'MANUAL',
+      'YAHOO'
     )
   )
 ) STRICT;

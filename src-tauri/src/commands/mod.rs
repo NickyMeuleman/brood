@@ -1,10 +1,10 @@
+pub mod chart;
 pub mod holdings;
 pub mod lot_data;
-pub mod chart;
 pub mod sync;
 
 use crate::{parse_decimal, AppError};
-use chrono::NaiveDate;
+use chrono::{Datelike, Days, Months, NaiveDate};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -202,5 +202,17 @@ impl AddAssign for Performance {
         self.net += other.net;
         self.fees += other.fees;
         // NOTE: don't add pct_fees here because percentages can't be summed.
+    }
+}
+
+pub fn period_start(today: NaiveDate, period: Period) -> Option<NaiveDate> {
+    match period {
+        Period::AllTime => None,
+        Period::FiveDays => today.checked_sub_days(Days::new(5)),
+        Period::OneMonth => today.checked_sub_months(Months::new(1)),
+        Period::SixMonths => today.checked_sub_months(Months::new(6)),
+        Period::OneYear => today.checked_sub_months(Months::new(12)),
+        Period::FiveYears => today.checked_sub_months(Months::new(60)),
+        Period::Ytd => NaiveDate::from_ymd_opt(today.year(), 1, 1),
     }
 }
