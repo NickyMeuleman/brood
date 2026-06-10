@@ -1,11 +1,13 @@
 use crate::commands::lot_data::load_lot_records;
-use crate::commands::{latest_on_or_before, period_start, DayTotals, NetGross, Period};
-use crate::{db::Db, parse_decimal, AppError};
+use crate::commands::{
+    get_prices, get_rates, latest_on_or_before, period_start, DayTotals, NetGross, Period,
+};
+use crate::{db::Db, AppError};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use specta::Type;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use tauri::State;
 
 #[derive(Debug, Serialize, Type)]
@@ -45,54 +47,10 @@ pub async fn get_portfolio_history(
     // Load the full price history up to today (no start_date filter).
     // This ensures latest_on_or_before always finds the correct price even
     // when a listing has no data on the exact first day of the range.
-    let mut prices: HashMap<i64, BTreeMap<NaiveDate, Decimal>> = HashMap::new();
-    let price_rows = sqlx::query!(
-        r#"
-        SELECT
-            listing_id,
-            date AS "date!: NaiveDate",
-            close
-        FROM price_history
-        WHERE date <= ?1
-        ORDER BY listing_id, date
-        "#,
-        today
-    )
-    .fetch_all(&db.pool)
-    .await?;
-
-    for row in price_rows {
-        let close = parse_decimal(&row.close, "close price")?;
-        prices
-            .entry(row.listing_id)
-            .or_default()
-            .insert(row.date, close);
-    }
+    let prices = get_prices(&db.pool, today).await?;
 
     // Load the full FX rate history up to today for the same reason.
-    let mut rates: HashMap<String, BTreeMap<NaiveDate, Decimal>> = HashMap::new();
-    let fx_rows = sqlx::query!(
-        r#"
-        SELECT
-            currency,
-            date AS "date!: NaiveDate",
-            rate_to_eur
-        FROM fx_rate
-        WHERE date <= ?1
-        ORDER BY currency, date
-        "#,
-        today
-    )
-    .fetch_all(&db.pool)
-    .await?;
-
-    for row in fx_rows {
-        let rate = parse_decimal(&row.rate_to_eur, "rate_to_eur")?;
-        rates
-            .entry(row.currency)
-            .or_default()
-            .insert(row.date, rate);
-    }
+    let rates = get_rates(&db.pool).await?;
 
     // Only consider dates where at least one held listing has price data.
     let active_listing_ids: HashSet<i64> = lot_records.iter().map(|l| l.listing_id).collect();
@@ -157,23 +115,6 @@ pub async fn get_portfolio_history(
             });
         }
     }
-    //----------------------------
-
-    // leftover from gemini
-    // // Extract listings and currencies we care about
-    // let relevant_listings: HashSet<i64> = lots.iter().map(|l| l.listing_id).collect();
-    // let relevant_currencies: HashSet<String> = lots
-    //     .iter()
-    //     .map(|l| l.currency_code.clone())
-    //     .filter(|c| c != "EUR")
-    //     .collect();
-    //
-    // // Ensure today and start date exist in timeline
-    // historical_dates.insert(start_date);
-    // historical_dates.insert(today);
-    //
-    // let mut sorted_dates: Vec<NaiveDate> = historical_dates.into_iter().collect();
-    // sorted_dates.sort();
 
     Ok(PortfolioHistory { points })
 }

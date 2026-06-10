@@ -1,3 +1,4 @@
+use crate::commands::get_rates;
 use crate::commands::latest_on_or_before;
 use crate::commands::CurrencyPair;
 use crate::db::types::InstrumentType;
@@ -6,7 +7,7 @@ use crate::AppError;
 use chrono::{NaiveDate, NaiveDateTime};
 use rust_decimal::Decimal;
 use sqlx::{Pool, Sqlite};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 /// Everything known about a lot that is independent of any specific date.
 #[derive(Debug, Clone)]
@@ -191,28 +192,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     // Loaded in full so that fee computation (step 5) and acquisition FX rate
     // resolution (step 8) can both use latest_on_or_before without further
     // database round-trips.
-    let mut all_rates: HashMap<String, BTreeMap<NaiveDate, Decimal>> = HashMap::new();
-    let fx_rows = sqlx::query!(
-        r#"
-        SELECT
-            date AS "date!: NaiveDate",
-            currency,
-            rate_to_eur
-        FROM fx_rate
-        ORDER BY date
-        "#
-    )
-    .fetch_all(pool)
-    .await?;
-
-    for row in fx_rows {
-        let rate = parse_decimal(&row.rate_to_eur, "fx_rate rate_to_eur")?;
-        all_rates
-            .entry(row.currency)
-            .or_default()
-            .insert(row.date, rate);
-    }
-
+    let all_rates = get_rates(pool).await?;
     // ---- 5. Trade fees -----------------------------------------------------
     let fee_rows = sqlx::query!(
         r#"

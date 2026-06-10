@@ -9,7 +9,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::{Pool, Sqlite};
-use std::{collections::BTreeMap, ops::AddAssign};
+use std::{
+    collections::{BTreeMap, HashMap},
+    ops::AddAssign,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 pub struct Metrics {
@@ -152,42 +155,6 @@ pub fn latest_on_or_before<V: Copy>(map: &BTreeMap<NaiveDate, V>, date: NaiveDat
     map.range(..=date).next_back().map(|(_, &v)| v)
 }
 
-pub async fn get_rate(
-    pool: &Pool<Sqlite>,
-    currency_code: &str,
-    date: NaiveDate,
-) -> Result<Decimal, AppError> {
-    if currency_code == "EUR" {
-        return Ok(Decimal::ONE);
-    }
-
-    let row = sqlx::query!(
-        r#"
-        SELECT rate_to_eur
-        FROM fx_rate
-        WHERE currency = ?1
-          AND date <= ?2
-        ORDER BY date DESC
-        LIMIT 1
-        "#,
-        currency_code,
-        date,
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::from)?;
-
-    let rate = row
-        .ok_or_else(|| {
-            AppError::Database(format!(
-                "No FX rate for {currency_code} on or before {date}"
-            ))
-        })?
-        .rate_to_eur;
-
-    parse_decimal(&rate, "FX rate")
-}
-
 impl AddAssign for Metrics {
     fn add_assign(&mut self, other: Self) {
         self.cost += other.cost;
@@ -215,4 +182,129 @@ pub fn period_start(today: NaiveDate, period: Period) -> Option<NaiveDate> {
         Period::FiveYears => today.checked_sub_months(Months::new(60)),
         Period::Ytd => NaiveDate::from_ymd_opt(today.year(), 1, 1),
     }
+}
+
+pub async fn get_rates(
+    pool: &Pool<Sqlite>,
+) -> Result<HashMap<String, BTreeMap<NaiveDate, Decimal>>, AppError> {
+    sqlx::query!(
+        r#"
+        SELECT
+            date AS "date!: NaiveDate",
+            currency,
+            rate_to_eur
+        FROM fx_rate
+        ORDER BY date
+        "#
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .try_fold(
+        HashMap::<String, BTreeMap<NaiveDate, Decimal>>::new(),
+        |mut acc, row| {
+            acc.entry(row.currency).or_default().insert(
+                row.date,
+                parse_decimal(&row.rate_to_eur, "fx_rate rate_to_eur")?,
+            );
+            Ok(acc)
+        },
+    )
+}
+
+pub async fn get_prices(
+    pool: &Pool<Sqlite>,
+    today: NaiveDate,
+) -> Result<HashMap<i64, BTreeMap<NaiveDate, Decimal>>, AppError> {
+    sqlx::query!(
+        r#"
+        SELECT
+            listing_id,
+            date AS "date!: NaiveDate",
+            close
+        FROM price_history
+        WHERE date <= ?1
+        ORDER BY listing_id, date
+        "#,
+        today
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .try_fold(
+        HashMap::<i64, BTreeMap<NaiveDate, Decimal>>::new(),
+        |mut acc, row| {
+            acc.entry(row.listing_id)
+                .or_default()
+                .insert(row.date, parse_decimal(&row.close, "close price")?);
+            Ok(acc)
+        },
+    )
+}
+
+pub async fn get_prices_on_or_before(
+    pool: &Pool<Sqlite>,
+    date: NaiveDate,
+) -> Result<HashMap<i64, Decimal>, AppError> {
+    // listing_id -> latest close
+    sqlx::query!(
+        r#"
+        SELECT
+            listing_id,
+            close
+        FROM (
+            SELECT 
+                listing_id, 
+                close, 
+                ROW_NUMBER() OVER (PARTITION BY listing_id ORDER BY date DESC) as rn
+            FROM price_history
+            WHERE date <= ?1
+        )
+        WHERE rn = 1
+        "#,
+        date
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| {
+        Ok((
+            r.listing_id,
+            parse_decimal(&r.close, "price_history close")?,
+        ))
+    })
+    .collect()
+}
+
+pub async fn get_rates_on_or_before(
+    pool: &Pool<Sqlite>,
+    date: NaiveDate,
+) -> Result<HashMap<String, Decimal>, AppError> {
+    sqlx::query!(
+        r#"
+        SELECT
+            currency,
+            rate_to_eur
+        FROM (
+            SELECT
+                currency,
+                rate_to_eur,
+                ROW_NUMBER() OVER (PARTITION BY currency ORDER BY date DESC) as rn
+            FROM fx_rate
+            WHERE date <= ?1
+        )
+        WHERE rn = 1
+        "#,
+        date
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| {
+        Ok((
+            r.currency,
+            parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?,
+        ))
+    })
+    .collect()
 }

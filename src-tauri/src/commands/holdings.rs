@@ -1,6 +1,7 @@
 use crate::commands::lot_data::load_lot_records;
 use crate::commands::{
-    period_start, CurrencyPair, NetGross, Performance, Period, PeriodContext, Snapshot,
+    get_prices_on_or_before, get_rates_on_or_before, period_start, CurrencyPair, NetGross,
+    Performance, Period, PeriodContext, Snapshot,
 };
 use crate::db::types::InstrumentType;
 use crate::db::Db;
@@ -101,85 +102,10 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let period_start_date = period_start(today, period);
     let lot_records = load_lot_records(&db.pool).await?;
 
-    // listing_id -> latest close
-    let latest_prices: HashMap<i64, Decimal> = sqlx::query!(
-        r#"
-        SELECT
-            listing_id,
-            close
-        FROM (
-            SELECT 
-                listing_id, 
-                close, 
-                ROW_NUMBER() OVER (PARTITION BY listing_id ORDER BY date DESC) as rn
-            FROM price_history
-            WHERE date <= ?1
-        )
-        WHERE rn = 1
-        "#,
-        today
-    )
-    .fetch_all(&db.pool)
-    .await?
-    .into_iter()
-    .map(|r| {
-        let price = parse_decimal(&r.close, "price_history close")?;
-        Ok((r.listing_id, price))
-    })
-    .collect::<Result<_, AppError>>()?;
-
-    let latest_rates: HashMap<String, Decimal> = sqlx::query!(
-        r#"
-        SELECT
-            currency,
-            rate_to_eur
-        FROM (
-            SELECT
-                currency,
-                rate_to_eur,
-                ROW_NUMBER() OVER (PARTITION BY currency ORDER BY date DESC) as rn
-            FROM fx_rate
-            WHERE date <= ?1
-        )
-        WHERE rn = 1
-        "#,
-        today
-    )
-    .fetch_all(&db.pool)
-    .await?
-    .into_iter()
-    .map(|r| {
-        let rate = parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?;
-        Ok((r.currency, rate))
-    })
-    .collect::<Result<_, AppError>>()?;
-
+    let latest_prices = get_prices_on_or_before(&db.pool, today).await?;
+    let latest_rates = get_rates_on_or_before(&db.pool, today).await?;
     let period_start_rates: HashMap<String, Decimal> = if let Some(start) = period_start_date {
-        sqlx::query!(
-            r#"
-        SELECT
-            currency,
-            rate_to_eur
-        FROM (
-            SELECT
-                currency,
-                rate_to_eur,
-                ROW_NUMBER() OVER (PARTITION BY currency ORDER BY date DESC) as rn
-            FROM fx_rate
-            WHERE date <= ?1
-        )
-        WHERE rn = 1
-        "#,
-            start
-        )
-        .fetch_all(&db.pool)
-        .await?
-        .into_iter()
-        .map(|r| {
-            let rate = parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?;
-            Ok((r.currency, rate))
-        })
-        .collect::<Result<_, AppError>>()?
+        get_rates_on_or_before(&db.pool, start).await?
     } else {
         HashMap::new()
     };
@@ -218,35 +144,15 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
         }
     }
 
-    let period_start_prices: HashMap<i64, Decimal> = if let Some(start) = period_start_date {
-        sqlx::query!(
-            r#"
-        SELECT
-            listing_id,
-            close
-        FROM (
-            SELECT 
-                listing_id, 
-                close, 
-                ROW_NUMBER() OVER (PARTITION BY listing_id ORDER BY date DESC) as rn
-            FROM price_history
-            WHERE date <= ?1
-        )
-        WHERE rn = 1
-        "#,
-            start
-        )
-        .fetch_all(&db.pool)
-        .await?
-        .into_iter()
-        .map(|r| {
-            let price = parse_decimal(&r.close, "period start price")?;
-            let multiplier = split_multipliers
-                .get(&r.listing_id)
-                .unwrap_or(&Decimal::ONE);
-            Ok((r.listing_id, price * multiplier))
-        })
-        .collect::<Result<_, AppError>>()?
+    let period_start_prices = if let Some(start) = period_start_date {
+        get_prices_on_or_before(&db.pool, start)
+            .await?
+            .into_iter()
+            .map(|(id, price)| {
+                let multiplier = split_multipliers.get(&id).unwrap_or(&Decimal::ONE);
+                Ok((id, price * multiplier))
+            })
+            .collect::<Result<_, AppError>>()?
     } else {
         HashMap::new()
     };
