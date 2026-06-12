@@ -24,6 +24,7 @@ export function useSync() {
 		onSuccess: () => {
 			setStatus("success");
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
 		},
 		onError: (e) => {
 			setStatus("error");

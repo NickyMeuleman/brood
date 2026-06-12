@@ -13,9 +13,10 @@ export default function RouteComponent() {
 	const matches = useMatches();
 	const sync = useSync();
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: run once at startup
 	useEffect(() => {
 		sync.mutate();
-	}, [sync.mutate]);
+	}, []);
 
 	return (
 		<>

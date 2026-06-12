@@ -30,6 +30,7 @@ export function useForceUpdateOneListingPrices() {
 		},
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
 			toast.success(`${data.ticker} prices updated`, {
 				description:
 					data.added === 0
@@ -54,6 +55,7 @@ export function useForceUpdateOneCurrencyFx() {
 		},
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
 			toast.success(`${data.currency} FX rates updated`, {
 				description:
 					data.added === 0
@@ -77,6 +79,7 @@ export function useForceUpdateAllPrices() {
 		},
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
 			const errorCount = data.filter((o) => o.status === "error").length;
 			if (errorCount === 0) {
 				toast.success("All prices updated");
@@ -103,6 +106,7 @@ export function useForceUpdateAllFx() {
 		},
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
 			const errorCount = data.filter((o) => o.status === "error").length;
 			if (errorCount === 0) {
 				toast.success("All FX rates updated");

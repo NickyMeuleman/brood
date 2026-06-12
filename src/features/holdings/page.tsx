@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
+import { getErrorMessage } from "@/lib/errors.ts";
+import { queryKeys } from "@/lib/queryKeys.ts";
 import {
 	cn,
 	formatCurrency,
@@ -13,15 +15,16 @@ import { commands } from "../../bindings.ts";
 import { columns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 import { normalizeHolding } from "./lib.ts";
+import { PortfolioChart } from "./PortfolioChart.tsx";
 
 const HoldingsPage = () => {
 	const { includeFees, displayInEur, period } = useUIStore();
 
 	const { data } = useQuery({
-		queryKey: ["holdings", period],
+		queryKey: queryKeys.holdingsByPeriod(period),
 		queryFn: async () => {
 			const res = await commands.getHoldings(period);
-			if (res.status === "error") throw res.error;
+			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return res.data;
 		},
 	});
@@ -151,6 +154,9 @@ const HoldingsPage = () => {
 					</p>
 				</div>
 			</div>
+      <div>
+        <PortfolioChart />
+      </div>
 			{data ? (
 				<DataTable
 					columns={columns}

@@ -200,7 +200,7 @@ export function DataTable<TData, TValue>({
 				</p>
 			)}
 
-			<div className="overflow-hidden rounded-md border">
+			<div className="overflow-hidden rounded-md border border-foreground/10">
 				<Table>
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
