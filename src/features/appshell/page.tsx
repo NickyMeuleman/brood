@@ -1,7 +1,5 @@
-import type { UseMutationResult } from "@tanstack/react-query";
 import { type AnyRouteMatch, Link } from "@tanstack/react-router";
 import { Fragment } from "react";
-import type { SyncOutcomes } from "@/bindings";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
 	Breadcrumb,

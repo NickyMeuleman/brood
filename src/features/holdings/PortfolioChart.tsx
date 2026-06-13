@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
 	type ChartConfig,
 	ChartContainer,
+	ChartLegend,
+	ChartLegendContent,
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
@@ -70,16 +72,20 @@ export function PortfolioChart() {
 		}));
 	}, [data, includeFees]);
 
-	const chartConfig = {
-		value: {
-			label: "Value",
-			color: "var(--chart-1)",
-		},
-		invested: {
-			label: "Invested",
-			color: "var(--chart-5)",
-		},
-	} satisfies ChartConfig;
+	const chartConfig = useMemo(
+		() =>
+			({
+				value: {
+					label: "Value",
+					color: "var(--chart-1)",
+				},
+				invested: {
+					label: includeFees ? "Invested (incl. fees)" : "Invested",
+					color: "var(--chart-5)",
+				},
+			}) satisfies ChartConfig,
+		[includeFees],
+	);
 
 	const xTicks = useMemo(() => {
 		if (!chartData?.length) return [];
@@ -160,11 +166,8 @@ export function PortfolioChart() {
 													style={{ backgroundColor: item.color }}
 												/>
 												<span className="text-muted-foreground">
-													{item.dataKey === "invested"
-														? `Invested${includeFees ? " (incl. fees)" : ""}`
-														: chartConfig[
-																item.dataKey as keyof typeof chartConfig
-															]?.label || name}
+													{chartConfig[item.dataKey as keyof typeof chartConfig]
+														?.label || name}
 												</span>
 											</div>
 											<span className="ml-auto pl-6 font-medium font-mono text-foreground tabular-nums">
@@ -195,6 +198,7 @@ export function PortfolioChart() {
 							dot={false}
 							activeDot={{ r: 3 }}
 						/>
+						<ChartLegend content={<ChartLegendContent />} />
 					</AreaChart>
 				</ChartContainer>
 			</CardContent>

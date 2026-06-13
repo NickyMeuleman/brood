@@ -5,10 +5,12 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useDateFormatters } from "@/hooks/use-date-formatters";
 import { useSyncStore } from "@/stores/sync";
 
 export function SyncStatus() {
 	const { status, submittedAt, error } = useSyncStore();
+	const dateFormatters = useDateFormatters();
 	if (status === "idle") return null;
 
 	const isLoading = status === "pending";
@@ -41,7 +43,10 @@ export function SyncStatus() {
 							{!isLoading && !isError && "Market data up to date"}
 						</p>
 						{submittedAt && (
-							<p>Last synced at: {new Date(submittedAt).toDateString()}</p>
+							<p>
+								Last synced at:{" "}
+								{dateFormatters.fulldate.format(new Date(submittedAt))}
+							</p>
 						)}
 						{isError && error && (
 							<p className="text-destructive">{error.message}</p>
