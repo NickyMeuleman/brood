@@ -171,7 +171,6 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     .collect();
 
     // ---- 3. CA effective dates (existence_start for CA-originated lots) -----
-    // todo? handle CA lots that originate from older CA lots? recursive?
     let ca_start_dates: HashMap<i64, NaiveDate> = sqlx::query!(
         r#"
         SELECT
@@ -260,14 +259,12 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
 
     // ---- 6. Sell allocations with dates ------------------------------------
     let mut sells_by_lot: HashMap<i64, Vec<(NaiveDate, Decimal)>> = HashMap::new();
-    // question: why DATE() and not the same pattern ar previously where you query the real
-    // type and call .date() in a processing loop?
     let sell_rows = sqlx::query!(
         r#"
         SELECT
             sa.origin_lot_id,
             sa.quantity,
-            DATE(t.executed_at) AS "sell_date!: NaiveDate"
+            t.executed_at AS "sell_date!: NaiveDateTime"
         FROM sell_allocation sa
         JOIN trade t ON t.id = sa.sell_trade_id
         ORDER BY sa.origin_lot_id, t.executed_at
@@ -281,7 +278,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         sells_by_lot
             .entry(row.origin_lot_id)
             .or_default()
-            .push((row.sell_date, qty));
+            .push((row.sell_date.date(), qty));
     }
 
     // ---- 7. Traverse lots in ascending ID order ----------------------------

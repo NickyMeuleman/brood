@@ -114,16 +114,16 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let splits = if let Some(start) = period_start_date {
         sqlx::query!(
             r#"
-    SELECT
-        l.id AS listing_id,
-        ca.ratio_from,
-        ca.ratio_to
-    FROM corporate_action ca
-    JOIN listing l ON l.instrument_id = ca.instrument_id
-    WHERE action_type IN ('SPLIT', 'REVERSE_SPLIT')
-      AND effective_date > ?1 
-      AND effective_date <= ?2
-    "#,
+            SELECT
+                l.id AS listing_id,
+                ca.ratio_from,
+                ca.ratio_to
+            FROM corporate_action ca
+            JOIN listing l ON l.instrument_id = ca.instrument_id
+            WHERE action_type IN ('SPLIT', 'REVERSE_SPLIT')
+              AND effective_date > ?1 
+              AND effective_date <= ?2
+            "#,
             start,
             today
         )
@@ -160,9 +160,6 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<Envelope,
     let mut holdings = HashMap::new();
     for lot in lot_records.iter().filter(|l| l.is_active_at(today)) {
         let qty = lot.qty_remaining_at(today);
-        if qty <= Decimal::ZERO {
-            continue;
-        }
 
         let h = holdings.entry(lot.listing_id).or_insert_with(|| Holding {
             // identity fields are identical for all lots of the same listing,

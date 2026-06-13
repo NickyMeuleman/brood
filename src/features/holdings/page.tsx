@@ -154,9 +154,7 @@ const HoldingsPage = () => {
 					</p>
 				</div>
 			</div>
-      <div>
-        <PortfolioChart />
-      </div>
+			<PortfolioChart />
 			{data ? (
 				<DataTable
 					columns={columns}

@@ -10,6 +10,7 @@ import {
 	ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDateFormatters } from "@/hooks/use-date-formatters";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 import { formatCurrency } from "@/lib/utils";
@@ -25,27 +26,24 @@ const PERIOD_TICK_COUNTS: Record<Period, number> = {
 	AllTime: 5, // Scaled representation
 };
 
-function useDateFormatters() {
-	return useMemo(() => {
-		return {
-			weekday: new Intl.DateTimeFormat(undefined, {
-				weekday: "short",
-			}),
-			dayMonth: new Intl.DateTimeFormat(undefined, {
-				day: "numeric",
-				month: "short",
-			}),
-			monthYear: new Intl.DateTimeFormat(undefined, {
-				month: "short",
-				year: "2-digit",
-			}),
-			fulldate: new Intl.DateTimeFormat(undefined, {
-				year: "numeric",
-				month: "short",
-				day: "numeric",
-			}),
-		};
-	}, []);
+function getXAxisFormatter(
+	period: Period,
+	formatters: ReturnType<typeof useDateFormatters>,
+): (value: string) => string {
+	const map: Record<Period, Intl.DateTimeFormat> = {
+		FiveDays: formatters.weekday,
+		OneMonth: formatters.dayMonth,
+		SixMonths: formatters.dayMonth,
+		OneYear: formatters.dayMonth,
+		Ytd: formatters.dayMonth,
+		FiveYears: formatters.monthYear,
+		AllTime: formatters.monthYear,
+	};
+	return (value: string) => {
+		const date = new Date(`${value}T00:00:00`);
+		const formatter = map[period] ?? formatters.monthYear;
+		return formatter.format(date);
+	};
 }
 
 export function PortfolioChart() {
@@ -72,37 +70,16 @@ export function PortfolioChart() {
 		}));
 	}, [data, includeFees]);
 
-	const chartConfig = useMemo(
-		() =>
-			({
-				value: {
-					label: "Value",
-					color: "var(--chart-1)",
-				},
-				invested: {
-					label: `Invested${includeFees ? " (incl. fees)" : ""}`,
-					color: "var(--chart-5)",
-				},
-			}) satisfies ChartConfig,
-		[includeFees],
-	);
-
-	function getXAxisFormatter(period: Period): (value: string) => string {
-		const map: Record<Period, Intl.DateTimeFormat> = {
-			FiveDays: formatters.weekday,
-			OneMonth: formatters.dayMonth,
-			SixMonths: formatters.dayMonth,
-			OneYear: formatters.dayMonth,
-			Ytd: formatters.dayMonth,
-			FiveYears: formatters.monthYear,
-			AllTime: formatters.monthYear,
-		};
-		return (value: string) => {
-			const date = new Date(`${value}T00:00:00`);
-			const formatter = map[period] ?? formatters.monthYear;
-			return formatter.format(date);
-		};
-	}
+	const chartConfig = {
+		value: {
+			label: "Value",
+			color: "var(--chart-1)",
+		},
+		invested: {
+			label: "Invested",
+			color: "var(--chart-5)",
+		},
+	} satisfies ChartConfig;
 
 	const xTicks = useMemo(() => {
 		if (!chartData?.length) return [];
@@ -163,7 +140,7 @@ export function PortfolioChart() {
 							tickMargin={12}
 							minTickGap={40}
 							interval="preserveStartEnd"
-							tickFormatter={getXAxisFormatter(period)}
+							tickFormatter={getXAxisFormatter(period, formatters)}
 						/>
 
 						<YAxis hide domain={[0, (max: number) => max * 1.05]} />
@@ -183,8 +160,11 @@ export function PortfolioChart() {
 													style={{ backgroundColor: item.color }}
 												/>
 												<span className="text-muted-foreground">
-													{chartConfig[item.dataKey as keyof typeof chartConfig]
-														?.label || name}
+													{item.dataKey === "invested"
+														? `Invested${includeFees ? " (incl. fees)" : ""}`
+														: chartConfig[
+																item.dataKey as keyof typeof chartConfig
+															]?.label || name}
 												</span>
 											</div>
 											<span className="ml-auto pl-6 font-medium font-mono text-foreground tabular-nums">
