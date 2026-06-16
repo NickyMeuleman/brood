@@ -1,6 +1,8 @@
 use crate::db::Db;
-use crate::sync::fx::{sync_all_fx, sync_one_currency, FXSyncOutcome, FxSyncTask};
-use crate::sync::prices::{sync_all_prices, sync_one_listing, PriceSyncOutcome, PriceSyncTask};
+use crate::sync::fx::{run_fx_sync_tasks, sync_all_fx, sync_one_currency, FXSyncOutcome, FxSyncTask};
+use crate::sync::prices::{
+    run_price_sync_tasks, sync_one_listing, sync_all_prices, PriceSyncOutcome, PriceSyncTask,
+};
 use crate::{mic_timezone, AppError, HttpClient};
 use chrono::{NaiveDate, Utc};
 use std::time::Duration;
@@ -127,40 +129,26 @@ pub async fn force_update_all_prices(
     .fetch_all(&db.pool)
     .await?;
 
-    let mut outcomes = Vec::new();
-    for (i, row) in rows.into_iter().enumerate() {
-        // Respect Yahoo's API limits
-        if i > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        }
-
-        let tz = mic_timezone(&row.mic).map_err(|_| AppError::Internal)?;
-        let to = Utc::now()
-            .with_timezone(&tz)
-            .date_naive()
-            .pred_opt()
-            .unwrap();
-        let from = row.earliest.unwrap_or(to);
-
-        let task = PriceSyncTask {
-            listing_id: row.id,
-            ticker: row.ticker.clone(),
-            mic: row.mic,
-            from,
-            to,
-        };
-
-        match sync_one_listing(&db.pool, &http.client, &task).await {
-            Ok(added) => outcomes.push(PriceSyncOutcome::Success {
+    let tasks = rows
+        .into_iter()
+        .map(|row| {
+            let tz = mic_timezone(&row.mic).map_err(|_| AppError::Internal)?;
+            let to = Utc::now()
+                .with_timezone(&tz)
+                .date_naive()
+                .pred_opt()
+                .expect("valid date");
+            let from = row.earliest.unwrap_or(to);
+            Ok(PriceSyncTask {
+                listing_id: row.id,
                 ticker: row.ticker,
-                added,
-            }),
-            Err(e) => outcomes.push(PriceSyncOutcome::Error {
-                ticker: row.ticker,
-                message: e.to_string(),
-            }),
-        }
-    }
+                mic: row.mic,
+                from,
+                to,
+            })
+        })
+        .collect::<Result<Vec<PriceSyncTask>, AppError>>()?;
+    let outcomes = run_price_sync_tasks(&db.pool, &http.client, tasks).await;
 
     Ok(outcomes)
 }
@@ -226,30 +214,18 @@ pub async fn force_update_all_fx(
     .fetch_all(&db.pool)
     .await?;
 
-    let mut outcomes = Vec::new();
-    for (i, row) in rows.into_iter().enumerate() {
-        if i > 0 {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-
-        let from = row.earliest.unwrap_or(to);
-        let task = FxSyncTask {
-            currency: row.currency.clone(),
-            from,
-            to,
-        };
-
-        match sync_one_currency(&db.pool, &http.client, &task).await {
-            Ok(added) => outcomes.push(FXSyncOutcome::Success {
-                currency: row.currency,
-                added,
-            }),
-            Err(e) => outcomes.push(FXSyncOutcome::Error {
-                currency: row.currency,
-                message: e.to_string(),
-            }),
-        }
-    }
+    let tasks = rows
+        .into_iter()
+        .map(|row| {
+            let from = row.earliest.unwrap_or(to);
+            FxSyncTask {
+                currency: row.currency.clone(),
+                from,
+                to,
+            }
+        })
+        .collect();
+    let outcomes = run_fx_sync_tasks(&db.pool, &http.client, tasks).await;
 
     Ok(outcomes)
 }

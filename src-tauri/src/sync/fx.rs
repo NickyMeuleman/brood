@@ -28,29 +28,7 @@ pub async fn sync_all_fx(
     client: &Client,
 ) -> Result<Vec<FXSyncOutcome>, AppError> {
     let tasks = get_fx_sync_tasks(pool).await?;
-
-    let mut outcomes = Vec::new();
-    for (i, task) in tasks.iter().enumerate() {
-        // be nice to the Frankfurter API to not get rate limited
-        if i > 0 {
-            sleep(Duration::from_millis(200)).await;
-        }
-
-        match sync_one_currency(pool, client, task).await {
-            Ok(added) => outcomes.push(FXSyncOutcome::Success {
-                currency: task.currency.clone(),
-                added,
-            }),
-            Err(e) => {
-                eprintln!("FX sync for {} failed: {}", task.currency, e);
-                outcomes.push(FXSyncOutcome::Error {
-                    currency: task.currency.clone(),
-                    message: e.to_string(),
-                });
-            }
-        }
-    }
-
+    let outcomes = run_fx_sync_tasks(pool, client, tasks).await;
     Ok(outcomes)
 }
 
@@ -116,6 +94,34 @@ pub async fn get_fx_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<FxSyncTask>, A
     }
 
     Ok(tasks)
+}
+
+pub async fn run_fx_sync_tasks(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+    tasks: Vec<FxSyncTask>,
+) -> Vec<FXSyncOutcome> {
+    let mut outcomes = Vec::new();
+    for (i, task) in tasks.iter().enumerate() {
+        if i > 0 {
+            sleep(Duration::from_millis(200)).await;
+        }
+
+        match sync_one_currency(pool, client, task).await {
+            Ok(added) => outcomes.push(FXSyncOutcome::Success {
+                currency: task.currency.clone(),
+                added,
+            }),
+            Err(e) => {
+                eprintln!("FX sync for {} failed: {}", task.currency, e);
+                outcomes.push(FXSyncOutcome::Error {
+                    currency: task.currency.clone(),
+                    message: e.to_string(),
+                });
+            }
+        }
+    }
+    outcomes
 }
 
 pub async fn sync_one_currency(

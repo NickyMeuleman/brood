@@ -25,22 +25,16 @@ pub enum PriceSyncOutcome {
     Error { ticker: String, message: String },
 }
 
-/// Sync prices for all listings that have open lots.
-/// Skips listings that are already up to date (last stored date = yesterday).
-/// Fails gracefully per-listing
-pub async fn sync_all_prices(
+pub async fn run_price_sync_tasks(
     pool: &Pool<Sqlite>,
     client: &Client,
-) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    let tasks = get_price_sync_tasks(pool).await?;
-
+    tasks: Vec<PriceSyncTask>,
+) -> Vec<PriceSyncOutcome> {
     let mut outcomes = Vec::new();
     for (i, task) in tasks.iter().enumerate() {
-        // be nice to the Yahoo API to not get rate limited
         if i > 0 {
             sleep(Duration::from_millis(200)).await;
         }
-
         match sync_one_listing(pool, client, task).await {
             Ok(added) => outcomes.push(PriceSyncOutcome::Success {
                 ticker: task.ticker.clone(),
@@ -55,8 +49,7 @@ pub async fn sync_all_prices(
             }
         }
     }
-
-    Ok(outcomes)
+    outcomes
 }
 
 pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTask>, AppError> {
@@ -121,6 +114,18 @@ pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTa
     }
 
     Ok(tasks)
+}
+
+/// Sync prices for all listings that have open lots.
+/// Skips listings that are already up to date (last stored date = yesterday).
+/// Fails gracefully per-listing
+pub async fn sync_all_prices(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+) -> Result<Vec<PriceSyncOutcome>, AppError> {
+    let tasks = get_price_sync_tasks(pool).await?;
+    let outcomes = run_price_sync_tasks(pool, client, tasks).await;
+    Ok(outcomes)
 }
 
 pub async fn sync_one_listing(
