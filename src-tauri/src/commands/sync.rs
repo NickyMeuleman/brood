@@ -1,7 +1,11 @@
 use crate::db::Db;
-use crate::sync::fx::{run_fx_sync_tasks, sync_all_fx, sync_one_currency, FXSyncOutcome, FxSyncTask};
+use crate::sync::fx::{
+    get_full_fx_sync_tasks, run_fx_sync_tasks, sync_all_fx, sync_one_currency, FXSyncOutcome,
+    FxSyncTask,
+};
 use crate::sync::prices::{
-    run_price_sync_tasks, sync_one_listing, sync_all_prices, PriceSyncOutcome, PriceSyncTask,
+    get_full_price_sync_tasks, run_price_sync_tasks, sync_all_prices, sync_one_listing,
+    PriceSyncOutcome, PriceSyncTask,
 };
 use crate::{mic_timezone, AppError, HttpClient};
 use chrono::{NaiveDate, Utc};
@@ -74,7 +78,7 @@ pub async fn force_update_one_listing_prices(
         .with_timezone(&tz)
         .date_naive()
         .pred_opt()
-        .unwrap();
+        .expect("valid date");
 
     // get earliest data, fallback to yesterday if not found
     let from = sqlx::query_scalar!(
@@ -109,47 +113,8 @@ pub async fn force_update_all_prices(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    // 1. Get every active listing that has at least one lot
-    let rows = sqlx::query!(
-        r#"
-        SELECT 
-            li.id as "id!", li.ticker as "ticker!", li.exchange_mic as "mic!",
-            (
-                SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))
-                FROM lot l
-                LEFT JOIN trade t ON t.id = l.source_trade_id
-                LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
-                WHERE l.listing_id = li.id
-            )                   AS "earliest: NaiveDate"
-        FROM listing li
-        WHERE EXISTS (SELECT 1 FROM lot l WHERE l.listing_id = li.id)
-          AND li.delisted_at IS NULL
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await?;
-
-    let tasks = rows
-        .into_iter()
-        .map(|row| {
-            let tz = mic_timezone(&row.mic).map_err(|_| AppError::Internal)?;
-            let to = Utc::now()
-                .with_timezone(&tz)
-                .date_naive()
-                .pred_opt()
-                .expect("valid date");
-            let from = row.earliest.unwrap_or(to);
-            Ok(PriceSyncTask {
-                listing_id: row.id,
-                ticker: row.ticker,
-                mic: row.mic,
-                from,
-                to,
-            })
-        })
-        .collect::<Result<Vec<PriceSyncTask>, AppError>>()?;
+    let tasks = get_full_price_sync_tasks(&db.pool).await?;
     let outcomes = run_price_sync_tasks(&db.pool, &http.client, tasks).await;
-
     Ok(outcomes)
 }
 
@@ -192,40 +157,7 @@ pub async fn force_update_all_fx(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<FXSyncOutcome>, AppError> {
-    let to = Utc::now().date_naive().pred_opt().expect("valid date");
-
-    let rows = sqlx::query!(
-        r#"
-        SELECT
-            li.currency_code AS "currency!",
-            MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))
-                AS "earliest: NaiveDate"
-        FROM lot l
-        LEFT JOIN listing li            ON li.id  = l.listing_id
-        LEFT JOIN lot_close lc          ON lc.lot_id = l.id
-        LEFT JOIN trade t               ON t.id   = l.source_trade_id
-        LEFT JOIN corporate_action ca   ON ca.id  = l.source_ca_id
-        WHERE li.currency_code != 'EUR'
-          AND li.delisted_at IS NULL
-          AND lc.lot_id IS NULL
-        GROUP BY li.currency_code
-        "#
-    )
-    .fetch_all(&db.pool)
-    .await?;
-
-    let tasks = rows
-        .into_iter()
-        .map(|row| {
-            let from = row.earliest.unwrap_or(to);
-            FxSyncTask {
-                currency: row.currency.clone(),
-                from,
-                to,
-            }
-        })
-        .collect();
+    let tasks = get_full_fx_sync_tasks(&db.pool).await?;
     let outcomes = run_fx_sync_tasks(&db.pool, &http.client, tasks).await;
-
     Ok(outcomes)
 }

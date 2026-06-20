@@ -1,7 +1,7 @@
-import type { EnvelopeHolding, PeriodContext, Snapshot } from "@/bindings";
+import type { HoldingPayload, PeriodContext, Snapshot } from "@/bindings";
 
 export function normalizeHolding(
-	h: EnvelopeHolding,
+	h: HoldingPayload,
 	includeFees: boolean,
 	displayInEur: boolean,
 ) {

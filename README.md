@@ -11,3 +11,13 @@ Do I have to duplicate the logic or can I write it once and reuse and extend it?
 ## Database
 
 Schema planning done via dbml format to visualize in https://dbdiagram.io/
+
+Price data sources:
+- yahoo finance
+
+Exchange rate sources:
+- Frankfurter API (filtered to only use the European Central Bank as source)
+
+Alternative price data options:
+- stooq
+- stockquotes

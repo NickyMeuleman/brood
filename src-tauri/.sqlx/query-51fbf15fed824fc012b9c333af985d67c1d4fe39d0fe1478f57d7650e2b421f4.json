@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            currency,\n            rate_to_eur\n        FROM (\n            SELECT\n                currency,\n                rate_to_eur,\n                ROW_NUMBER() OVER (PARTITION BY currency ORDER BY date DESC) as rn\n            FROM fx_rate\n            WHERE date <= ?1\n        )\n        WHERE rn = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "currency",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "rate_to_eur",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "51fbf15fed824fc012b9c333af985d67c1d4fe39d0fe1478f57d7650e2b421f4"
+}

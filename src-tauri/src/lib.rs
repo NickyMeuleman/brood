@@ -41,7 +41,7 @@ pub enum AppError {
     #[error("Internal server error")]
     Internal,
 
-    #[error("Timeout error")]
+    #[error("Timeout error: {0}")]
     Timeout(String),
 }
 

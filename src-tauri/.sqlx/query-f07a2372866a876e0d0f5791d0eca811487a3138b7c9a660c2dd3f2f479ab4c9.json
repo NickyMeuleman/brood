@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                l.id AS listing_id,\n                ca.ratio_from,\n                ca.ratio_to\n            FROM corporate_action ca\n            JOIN listing l ON l.instrument_id = ca.instrument_id\n            WHERE action_type IN ('SPLIT', 'REVERSE_SPLIT')\n              AND effective_date > ?1 \n              AND effective_date <= ?2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "listing_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ratio_from",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "ratio_to",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "f07a2372866a876e0d0f5791d0eca811487a3138b7c9a660c2dd3f2f479ab4c9"
+}

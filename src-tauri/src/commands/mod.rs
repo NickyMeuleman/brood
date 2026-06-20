@@ -308,3 +308,17 @@ pub async fn get_rates_on_or_before(
     })
     .collect()
 }
+
+pub fn resolve_rate(
+    currency: &str,
+    rates: &HashMap<String, Decimal>,
+    context: &str,
+) -> Result<Decimal, AppError> {
+    if currency == "EUR" {
+        return Ok(Decimal::ONE);
+    }
+    rates
+        .get(currency)
+        .copied()
+        .ok_or_else(|| AppError::Database(format!("No FX rate for {currency}: {context}")))
+}

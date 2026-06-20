@@ -116,6 +116,54 @@ pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTa
     Ok(tasks)
 }
 
+pub async fn get_full_price_sync_tasks(
+    pool: &Pool<Sqlite>,
+) -> Result<Vec<PriceSyncTask>, AppError> {
+    // 1. Get every active listing that has at least one lot
+    let rows = sqlx::query!(
+        r#"
+        SELECT 
+            li.id as "id!",
+            li.ticker as "ticker!",
+            li.exchange_mic as "mic!",
+            (
+                SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))
+                FROM lot l
+                LEFT JOIN trade t ON t.id = l.source_trade_id
+                LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
+                WHERE l.listing_id = li.id
+            )                   AS "earliest: NaiveDate"
+        FROM listing li
+        WHERE EXISTS (SELECT 1 FROM lot l WHERE l.listing_id = li.id)
+          AND li.delisted_at IS NULL
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let tasks = rows
+        .into_iter()
+        .map(|row| {
+            let tz = mic_timezone(&row.mic).map_err(|_| AppError::Internal)?;
+            let to = Utc::now()
+                .with_timezone(&tz)
+                .date_naive()
+                .pred_opt()
+                .expect("valid date");
+            let from = row.earliest.unwrap_or(to);
+            Ok(PriceSyncTask {
+                listing_id: row.id,
+                ticker: row.ticker,
+                mic: row.mic,
+                from,
+                to,
+            })
+        })
+        .collect::<Result<Vec<PriceSyncTask>, AppError>>()?;
+
+    Ok(tasks)
+}
+
 /// Sync prices for all listings that have open lots.
 /// Skips listings that are already up to date (last stored date = yesterday).
 /// Fails gracefully per-listing

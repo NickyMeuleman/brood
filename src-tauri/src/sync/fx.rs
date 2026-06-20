@@ -96,6 +96,44 @@ pub async fn get_fx_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<FxSyncTask>, A
     Ok(tasks)
 }
 
+pub async fn get_full_fx_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<FxSyncTask>, AppError> {
+    let to = Utc::now().date_naive().pred_opt().expect("valid date");
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            li.currency_code AS "currency!",
+            MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date)))
+                AS "earliest: NaiveDate"
+        FROM lot l
+        LEFT JOIN listing li            ON li.id  = l.listing_id
+        LEFT JOIN lot_close lc          ON lc.lot_id = l.id
+        LEFT JOIN trade t               ON t.id   = l.source_trade_id
+        LEFT JOIN corporate_action ca   ON ca.id  = l.source_ca_id
+        WHERE li.currency_code != 'EUR'
+          AND li.delisted_at IS NULL
+          AND lc.lot_id IS NULL
+        GROUP BY li.currency_code
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let tasks = rows
+        .into_iter()
+        .map(|row| {
+            let from = row.earliest.unwrap_or(to);
+            FxSyncTask {
+                currency: row.currency.clone(),
+                from,
+                to,
+            }
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
 pub async fn run_fx_sync_tasks(
     pool: &Pool<Sqlite>,
     client: &Client,

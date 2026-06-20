@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            listing_id,\n            close\n        FROM (\n            SELECT \n                listing_id, \n                close, \n                ROW_NUMBER() OVER (PARTITION BY listing_id ORDER BY date DESC) as rn\n            FROM price_history\n            WHERE date <= ?1\n        )\n        WHERE rn = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "listing_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "close",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "a5d3a3eeff18c2a59ad555114db7c38b0d4dcbd2375c196a8d290e29eab77b8d"
+}
