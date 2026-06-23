@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Page from "@/features/trade/page.tsx";
 
 export const Route = createFileRoute("/trade/buy")({
 	component: RouteComponent,
@@ -6,5 +7,5 @@ export const Route = createFileRoute("/trade/buy")({
 });
 
 function RouteComponent() {
-	return <div>Hello "/trade/buy"!</div>;
+	return <Page />
 }

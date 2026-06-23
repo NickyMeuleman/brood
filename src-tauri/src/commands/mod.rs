@@ -2,6 +2,7 @@ pub mod chart;
 pub mod holdings;
 pub mod lot_data;
 pub mod sync;
+pub mod trade;
 
 use crate::{parse_decimal, AppError};
 use chrono::{Datelike, Days, Months, NaiveDate};

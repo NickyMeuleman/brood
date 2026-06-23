@@ -1,4 +1,7 @@
 import { createFormHook } from "@tanstack/react-form";
+import { DateTimeField } from "@/components/DateTimeField.tsx";
+import { DecimalField } from "@/components/DecimalField.tsx";
+import { ListingPicker } from "@/components/ListingPicker.tsx";
 import { NumberField } from "@/components/NumberField.tsx";
 import { SubmitButton } from "@/components/SubmitButton.tsx";
 import { TextField } from "@/components/TextField.tsx";
@@ -8,6 +11,9 @@ export const { useAppForm } = createFormHook({
 	fieldComponents: {
 		TextField,
 		NumberField,
+		ListingPicker,
+		DecimalField,
+		DateTimeField,
 	},
 	formComponents: {
 		SubmitButton,

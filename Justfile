@@ -6,7 +6,7 @@ dev_db     := replace(dev_db_raw, "sqlite:", "")
 default: dev
 
 dev:
-  pnpm tauri dev
+  LANG=en_IE.UTF-8 pnpm tauri dev
 
 build:
   # https://github.com/tauri-apps/tauri/issues/13113#issuecomment-3162433538
