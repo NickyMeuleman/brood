@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)\n            VALUES (?1, 'BROKER', ?2, 'EUR')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5267a6124b9d7230eecf372041a664616f14bab63eac56eda874e89ade184598"
+}

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
 	commands,
 	type FXSyncOutcome,
@@ -14,6 +14,7 @@ import {
 	useForceUpdateOneCurrencyFx,
 	useForceUpdateOneListingPrices,
 } from "@/hooks/use-force-sync";
+import { useImportBuyCSV } from "@/hooks/use-import";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,33 @@ export const Route = createFileRoute("/admin")({
 function RouteComponent() {
 	const allPrices = useForceUpdateAllPrices();
 	const allFx = useForceUpdateAllFx();
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const importMutation = useImportBuyCSV();
+
+	const handleButtonClick = () => {
+		// Programmatically click the hidden file input
+		fileInputRef.current?.click();
+	};
+
+	const handleFileChange = async (
+		event: React.ChangeEvent<HTMLInputElement>,
+	) => {
+		const file = event.target.files?.[0];
+		if (!file) return;
+
+		try {
+			// Read the file directly into a string using standard modern Web APIs
+			const csvText = await file.text();
+
+			// Fire off the string to your Tauri Rust command
+			importMutation.mutate(csvText);
+		} catch (error) {
+			console.error("Failed to read file", error);
+		} finally {
+			// Clear the input value so the same file can be uploaded back-to-back if needed
+			if (event.target) event.target.value = "";
+		}
+	};
 
 	const { data: holdingsData } = useQuery({
 		queryKey: queryKeys.holdingsByPeriod("AllTime"),
@@ -110,6 +138,30 @@ function RouteComponent() {
 						))}
 					</div>
 				)}
+			</section>
+
+			<section className="space-y-3">
+				<h3 className="font-medium text-muted-foreground text-sm uppercase tracking-widest">
+					Import
+				</h3>
+				<div className="flex items-center gap-3">
+					{/* Hidden native input restricted to CSVs */}
+					<input
+						type="file"
+						ref={fileInputRef}
+						onChange={handleFileChange}
+						accept=".csv"
+						className="hidden"
+					/>
+					<Button
+						variant="outline"
+						disabled={allPrices.isPending}
+						onClick={handleButtonClick}
+					>
+						Import buy trade csv
+					</Button>
+					<MutationStatus mutation={allPrices} />
+				</div>
 			</section>
 		</div>
 	);

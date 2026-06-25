@@ -14,7 +14,7 @@ use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
 };
-use commands::trade::{buy, get_listings};
+use commands::trade::{buy, get_listings, import_buy_csv};
 use db::init_db;
 use reqwest;
 use rust_decimal::Decimal;
@@ -73,7 +73,8 @@ pub fn run() {
         force_update_all_fx,
         force_update_one_currency_fx,
         get_listings,
-        buy
+        buy,
+        import_buy_csv
     ]);
 
     #[cfg(debug_assertions)]

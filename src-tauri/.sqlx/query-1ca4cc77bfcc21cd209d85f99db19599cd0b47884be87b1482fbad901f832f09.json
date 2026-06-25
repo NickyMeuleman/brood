@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            instrument_id AS \"instrument_id!\",\n            currency_code AS \"currency_code!\"\n        FROM listing\n        WHERE id = ?1 AND delisted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "instrument_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "currency_code!",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1ca4cc77bfcc21cd209d85f99db19599cd0b47884be87b1482fbad901f832f09"
+}

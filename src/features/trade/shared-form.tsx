@@ -1,30 +1,45 @@
 import { formOptions } from "@tanstack/react-form";
 import { z } from "zod";
 
+const positiveDecimal = z
+	.string()
+	.min(1, "Required")
+	.refine(
+		(v) => !Number.isNaN(Number(v)) && Number(v) > 0,
+		"Must be a positive number",
+	);
+
+const optionalDecimal = z
+	.string()
+	.transform((v) => (v === "" ? null : v))
+	.refine(
+		(v) =>
+			v === null || v === "" || (!Number.isNaN(Number(v)) && Number(v) > 0),
+		"Must be a positive number",
+	);
+
+export const buySchema = z.object({
+	listing_id: z.int().positive(),
+	quantity: positiveDecimal,
+	executed_at: z.iso.datetime(),
+	unit_price: positiveDecimal,
+	broker_fee: optionalDecimal,
+	tob_fee: optionalDecimal,
+});
+
 export const buyFormOpts = formOptions({
 	defaultValues: {
-		listing_id: 1,
+		listing_id: 0,
 		quantity: "",
-		executed_at: "",
+		unit_price: "",
+		broker_fee: "",
+		tob_fee: "",
+		executed_at: new Date().toISOString(),
 	},
 	validators: {
-		onBlur: z.object({
-			listing_id: z.int().positive(),
-			quantity: z
-				.string()
-				.min(1, "Required")
-				.regex(/^-?\d+(\.\d+)?$/, "Must be a valid decimal (e.g., '123.45')")
-				.refine(
-					(val) => {
-						const isZero = /^-?0+(\.0+)?$/.test(val);
-						return !isZero;
-					},
-					{
-						message: "Amount cannot be zero",
-					},
-				),
-			executed_at: z.string(),
-		}),
+    // validate on mount or canSubmit starts as true
+		onMount: buySchema,
+		onChange: buySchema,
 	},
 	canSubmitWhenInvalid: false,
 });

@@ -1,10 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
-import { commands, type CreateBuyTradeInput } from "../bindings";
+import { type CreateBuyTradeInput, commands } from "../bindings";
 
 export function useBuy() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 
 	return useMutation({
 		mutationFn: async (input: CreateBuyTradeInput) => {
@@ -14,11 +17,14 @@ export function useBuy() {
 			}
 			return res.data;
 		},
-		onMutate: () => {},
 		onSuccess: () => {
-			// queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
-			// queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
+			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
+			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
+			toast.success("Trade recorded");
+			navigate({ to: "/" });
 		},
-		onError: (e) => {},
+		onError: (e) => {
+			toast.error("Failed to record trade", { description: e.message });
+		},
 	});
 }
