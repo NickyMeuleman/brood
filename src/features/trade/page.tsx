@@ -24,6 +24,37 @@ const BuyPage = () => {
 		(l) => l.id === selectedListingId,
 	)?.currency_code;
 
+	const computeTobHint = (): string | null => {
+		const { listing_id, quantity, unit_price } = f.store.state.values;
+		const rate_str = listings.find((l) => l.id === listing_id)?.tob_rate_hint;
+		if (!rate_str) return null;
+		const qty = Number(quantity);
+		const price = Number(unit_price);
+		const rate = Number(rate_str);
+
+		if (![qty, price, rate].every((n) => Number.isFinite(n) && n > 0))
+			return null;
+		const hint = (qty * price * Number(rate)).toFixed(2);
+
+		return hint === "0.00" ? null : hint;
+	};
+
+	const autoFillTob = () => {
+		if (!f.store.state.fieldMeta.tob_fee?.isPristine) return;
+		const suggested = computeTobHint();
+		if (suggested !== null) {
+			f.setFieldValue("tob_fee", suggested, { dontUpdateMeta: true });
+		}
+	};
+
+	const resetAndFillTob = () => {
+		f.setFieldValue("tob_fee", "", { dontUpdateMeta: true });
+		const suggested = computeTobHint();
+		if (suggested !== null) {
+			f.setFieldValue("tob_fee", suggested, { dontUpdateMeta: true });
+		}
+	};
+
 	return (
 		<div className="m-auto w-2/3 max-w-xl p-4 pt-8">
 			<form
@@ -33,7 +64,10 @@ const BuyPage = () => {
 				}}
 			>
 				<FieldGroup>
-					<f.AppField name="listing_id">
+					<f.AppField
+						name="listing_id"
+						listeners={{ onChange: resetAndFillTob }}
+					>
 						{(field) => (
 							<field.ListingPicker
 								label="Listing"
@@ -42,10 +76,10 @@ const BuyPage = () => {
 							/>
 						)}
 					</f.AppField>
-					<f.AppField name="quantity">
+					<f.AppField name="quantity" listeners={{ onChange: autoFillTob }}>
 						{(field) => <field.DecimalField label="Quantity" />}
 					</f.AppField>
-					<f.AppField name="unit_price">
+					<f.AppField name="unit_price" listeners={{ onChange: autoFillTob }}>
 						{(field) => (
 							<field.DecimalField
 								label="Unit price"
