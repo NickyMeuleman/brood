@@ -1,3 +1,4 @@
+import type { ListingInfo } from "@/bindings";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
 	Select,
@@ -9,12 +10,18 @@ import {
 } from "@/components/ui/select";
 import { TruncatedTooltip } from "@/features/holdings/TruncatedTooltip";
 import { useFieldContext } from "@/hooks/form-context";
-import { useListings } from "@/hooks/use-listings";
 import { cn, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 
-export const ListingPicker = ({ label }: { label: string }) => {
-	const { data: listings = [], isLoading } = useListings();
+export const ListingPicker = ({
+	label,
+	listings,
+	isLoading,
+}: {
+	label: string;
+	listings: ListingInfo[];
+	isLoading: boolean;
+}) => {
 	const field = useFieldContext<number>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 
