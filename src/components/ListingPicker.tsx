@@ -31,7 +31,10 @@ export const ListingPicker = ({
 			<Select
 				id={field.name}
 				value={field.state.value}
-				onValueChange={(id) => field.handleChange(id ?? 1)}
+				onValueChange={(id) => field.handleChange(id ?? 0)}
+				onOpenChange={(open) => {
+					if (!open) field.handleBlur();
+				}}
 				itemToStringLabel={(id) =>
 					listings.find((l) => l.id === id)?.ticker ?? ""
 				}
