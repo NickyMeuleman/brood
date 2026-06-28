@@ -4,8 +4,8 @@ pub mod lot_data;
 pub mod sync;
 pub mod trade;
 
-use crate::{parse_decimal, AppError};
-use chrono::{Datelike, Days, Months, NaiveDate};
+use crate::{AppError, db::Db, parse_decimal};
+use chrono::{DateTime, Datelike, Days, Months, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -14,6 +14,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     ops::AddAssign,
 };
+use tauri::State;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 pub struct Metrics {
@@ -322,4 +323,43 @@ pub fn resolve_rate(
         .get(currency)
         .copied()
         .ok_or_else(|| AppError::Database(format!("No FX rate for {currency}: {context}")))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_rate(
+    db: State<'_, Db>,
+    currency_code: &str,
+    date: DateTime<Utc>,
+) -> Result<Decimal, AppError> {
+    if currency_code == "EUR" {
+        return Ok(Decimal::ONE);
+    }
+    let date = date.naive_utc().date();
+
+    let row = sqlx::query!(
+        r#"
+        SELECT rate_to_eur
+        FROM fx_rate
+        WHERE currency = ?1
+          AND date <= ?2
+        ORDER BY date DESC
+        LIMIT 1
+        "#,
+        currency_code,
+        date,
+    )
+    .fetch_optional(&db.pool)
+    .await
+    .map_err(AppError::from)?;
+
+    let rate = row
+        .ok_or_else(|| {
+            AppError::Database(format!(
+                "No FX rate for {currency_code} on or before {date}"
+            ))
+        })?
+        .rate_to_eur;
+
+    parse_decimal(&rate, "FX rate")
 }

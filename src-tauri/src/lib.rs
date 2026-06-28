@@ -9,6 +9,7 @@ mod sync;
 
 use chrono_tz::Tz;
 use commands::chart::get_portfolio_history;
+use commands::get_rate;
 use commands::holdings::get_holdings;
 use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
@@ -22,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::str::FromStr;
 use sync::yahoo::Error as YahooError;
-use tauri::{async_runtime::block_on, Manager};
-use tauri_specta::{collect_commands, Builder};
+use tauri::{Manager, async_runtime::block_on};
+use tauri_specta::{Builder, collect_commands};
 use thiserror::Error;
 
 pub fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
@@ -74,7 +75,8 @@ pub fn run() {
         force_update_one_currency_fx,
         get_listings,
         buy,
-        import_buy_csv
+        import_buy_csv,
+        get_rate
     ]);
 
     #[cfg(debug_assertions)]
@@ -217,3 +219,10 @@ pub fn mic_timezone(mic: &str) -> Result<Tz, YahooError> {
         ))),
     }
 }
+
+// EEA domicile codes used to determine the 0.12% accumulating rate.
+// EEA = EU member states + Norway, Iceland, Liechtenstein.
+const EEA_DOMICILES: [&str; 30] = [
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IS", "IE", "IT",
+    "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+];

@@ -1,6 +1,6 @@
-use crate::db::types::InstrumentType;
 use crate::db::Db;
-use crate::{parse_decimal, AppError, HttpClient};
+use crate::db::types::InstrumentType;
+use crate::{AppError, EEA_DOMICILES, parse_decimal};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,7 @@ pub struct ListingInfo {
     pub instrument_name: String,
     pub isin: String,
     pub instrument_type: InstrumentType,
+    pub tob_rate_hint: Decimal,
 }
 
 #[tauri::command]
@@ -31,7 +32,18 @@ pub async fn get_listings(db: State<'_, Db>) -> Result<Vec<ListingInfo>, AppErro
             li.currency_code    AS "currency_code!",
             i.name              AS "instrument_name!",
             i.isin              AS "isin!",
-            i.instrument_type   AS "instrument_type!: InstrumentType"
+            i.instrument_type   AS "instrument_type!: InstrumentType",
+            i.accumulating      AS "accumulating!",
+            i.fsma_registered   AS "fsma_registered!",
+            i.domicile,
+            CASE WHEN (
+                i.fund_family_id IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM instrument i2
+                    WHERE i2.fund_family_id = i.fund_family_id
+                    AND i2.id != i.id
+                    AND i2.fsma_registered = 1
+                )
+            ) THEN 1 ELSE 0 END AS "fsma_registered_family"
         FROM listing li
         JOIN instrument i ON i.id = li.instrument_id
         WHERE li.delisted_at IS NULL
@@ -43,14 +55,27 @@ pub async fn get_listings(db: State<'_, Db>) -> Result<Vec<ListingInfo>, AppErro
 
     Ok(rows
         .into_iter()
-        .map(|r| ListingInfo {
-            id: r.id,
-            ticker: r.ticker,
-            exchange_mic: r.exchange_mic,
-            currency_code: r.currency_code,
-            instrument_name: r.instrument_name,
-            isin: r.isin,
-            instrument_type: r.instrument_type,
+        .map(|r| {
+            let accumulating = r.accumulating != 0;
+            let fsma_direct = r.fsma_registered != 0;
+            let fsma_family = r.fsma_registered_family != 0;
+            let tob_rate_hint = tob_rate_hint(
+                &r.instrument_type,
+                accumulating,
+                fsma_direct,
+                fsma_family,
+                r.domicile.as_deref(),
+            );
+            ListingInfo {
+                id: r.id,
+                ticker: r.ticker,
+                exchange_mic: r.exchange_mic,
+                currency_code: r.currency_code,
+                instrument_name: r.instrument_name,
+                isin: r.isin,
+                instrument_type: r.instrument_type,
+                tob_rate_hint,
+            }
         })
         .collect())
 }
@@ -210,4 +235,39 @@ pub async fn import_buy_csv(db: State<'_, Db>, csv_content: String) -> Result<()
     }
 
     Ok(())
+}
+
+// https://curvo.eu/nl/artikel/beurstaks-tob
+fn tob_rate_hint(
+    instrument_type: &InstrumentType,
+    accumulating: bool,
+    fsma_registered_direct: bool,
+    family_fsma_registered: bool,
+    domicile: Option<&str>,
+) -> Decimal {
+    match instrument_type {
+        InstrumentType::Etf => {
+            if let Some(dom) = domicile
+                && !EEA_DOMICILES.contains(&dom)
+            {
+                return Decimal::new(35, 4);
+            }
+            if !(fsma_registered_direct || family_fsma_registered) {
+                return Decimal::new(12, 4);
+            }
+            if !accumulating {
+                return Decimal::new(12, 4);
+            }
+            Decimal::new(132, 4)
+        }
+        InstrumentType::Stock => Decimal::new(35, 4),
+        InstrumentType::Bond => Decimal::new(12, 4),
+        InstrumentType::Fund => {
+            if !accumulating {
+                return Decimal::ZERO;
+            }
+            Decimal::new(132, 4)
+        }
+        _ => Decimal::new(132, 4),
+    }
 }

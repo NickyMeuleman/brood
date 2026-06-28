@@ -1,12 +1,17 @@
 import { useStore } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
+import { commands } from "@/bindings";
 import { FieldGroup } from "@/components/ui/field";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 import { useBuy } from "@/hooks/use-buy";
 import { useListings } from "@/hooks/use-listings";
+import { getErrorMessage } from "@/lib/errors";
 
 const BuyPage = () => {
 	const buy = useBuy();
+
 	const f = useAppForm({
 		...buyFormOpts,
 		onSubmit: ({ value }) => {
@@ -16,44 +21,58 @@ const BuyPage = () => {
 	});
 
 	const { data: listings = [], isLoading: listingsLoading } = useListings();
-	const selectedListingId = useStore(
-		f.store,
-		(state) => state.values.listing_id,
-	);
-	const listingCurrency = listings.find(
-		(l) => l.id === selectedListingId,
-	)?.currency_code;
 
-	const computeTobHint = (): string | null => {
-		const { listing_id, quantity, unit_price } = f.store.state.values;
-		const rate_str = listings.find((l) => l.id === listing_id)?.tob_rate_hint;
-		if (!rate_str) return null;
+	const listingId = useStore(f.store, (state) => state.values.listing_id);
+	const quantity = useStore(f.store, (state) => state.values.quantity);
+	const unitPrice = useStore(f.store, (state) => state.values.unit_price);
+	const executedAt = useStore(f.store, (state) => state.values.executed_at);
+
+	const listing = listings.find((l) => l.id === listingId);
+	const listingCurrency = listing?.currency_code;
+
+	const { data: fxRateStr } = useQuery({
+		enabled: Boolean(listingCurrency && executedAt),
+		queryKey: ["fx-rate", listingCurrency, executedAt],
+		queryFn: async () => {
+			const res = await commands.getRate(
+				listingCurrency ?? "EUR",
+				executedAt ?? new Date().toISOString(),
+			);
+			if (res.status === "error") {
+				throw new Error(getErrorMessage(res.error));
+			}
+			return res.data;
+		},
+	});
+
+	const tobHint = useMemo(() => {
+		if (!listing?.tob_rate_hint) return null;
+
 		const qty = Number(quantity);
-		const price = Number(unit_price);
-		const rate = Number(rate_str);
+		const price = Number(unitPrice);
+		const rate = Number(listing.tob_rate_hint);
+		const fx = Number(fxRateStr);
 
-		if (![qty, price, rate].every((n) => Number.isFinite(n) && n > 0))
+		if (![qty, price, rate, fx].every((n) => Number.isFinite(n) && n > 0))
 			return null;
-		const hint = (qty * price * Number(rate)).toFixed(2);
 
+		const hint = (qty * price * rate * fx).toFixed(2);
 		return hint === "0.00" ? null : hint;
-	};
+	}, [listing, quantity, unitPrice, fxRateStr]);
 
-	const autoFillTob = () => {
-		if (!f.store.state.fieldMeta.tob_fee?.isPristine) return;
-		const suggested = computeTobHint();
-		if (suggested !== null) {
-			f.setFieldValue("tob_fee", suggested, { dontUpdateMeta: true });
-		}
-	};
+	const tobPristine = useStore(f.store, (s) => s.fieldMeta.tob_fee?.isPristine);
 
-	const resetAndFillTob = () => {
-		f.setFieldValue("tob_fee", "", { dontUpdateMeta: true });
-		const suggested = computeTobHint();
-		if (suggested !== null) {
-			f.setFieldValue("tob_fee", suggested, { dontUpdateMeta: true });
+	const setTob = useCallback(
+		(v: string) => f.setFieldValue("tob_fee", v, { dontUpdateMeta: true }),
+		[f],
+	);
+
+	useEffect(() => {
+		if (!tobPristine) return;
+		if (tobHint !== null) {
+			setTob(tobHint);
 		}
-	};
+	}, [tobHint, tobPristine, setTob]);
 
 	return (
 		<div className="m-auto w-2/3 max-w-xl p-4 pt-8">
@@ -64,10 +83,7 @@ const BuyPage = () => {
 				}}
 			>
 				<FieldGroup>
-					<f.AppField
-						name="listing_id"
-						listeners={{ onChange: resetAndFillTob }}
-					>
+					<f.AppField name="listing_id">
 						{(field) => (
 							<field.ListingPicker
 								label="Listing"
@@ -76,10 +92,10 @@ const BuyPage = () => {
 							/>
 						)}
 					</f.AppField>
-					<f.AppField name="quantity" listeners={{ onChange: autoFillTob }}>
+					<f.AppField name="quantity">
 						{(field) => <field.DecimalField label="Quantity" />}
 					</f.AppField>
-					<f.AppField name="unit_price" listeners={{ onChange: autoFillTob }}>
+					<f.AppField name="unit_price">
 						{(field) => (
 							<field.DecimalField
 								label="Unit price"
