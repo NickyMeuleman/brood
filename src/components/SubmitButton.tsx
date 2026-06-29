@@ -6,11 +6,13 @@ export const SubmitButton = ({ label }: { label: string }) => {
 
 	return (
 		<form.Subscribe
-			selector={(state) => ({
-				canSubmit: state.isTouched && state.canSubmit,
-				isSubmitting: state.isSubmitting,
-				isInvalid: state.isTouched && !state.isValid,
-			})}
+			selector={(state) => {
+				return {
+					canSubmit: state.isTouched && state.canSubmit,
+					isSubmitting: state.isSubmitting,
+					isInvalid: !state.isPristine && !state.isValid,
+				};
+			}}
 			children={({ canSubmit, isSubmitting, isInvalid }) => {
 				return (
 					<Button type="submit" disabled={!canSubmit} aria-invalid={isInvalid}>

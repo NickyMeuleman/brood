@@ -11,7 +11,7 @@ export function useTobHint(
 	listingCurrency: string,
 	tobRate?: string,
 ) {
-	const { data: fxRateStr } = useQuery({
+	const { data: fxRate } = useQuery({
 		enabled: Boolean(listingCurrency && executedAt),
 		queryKey: queryKeys.fxRateFor(listingCurrency, executedAt),
 		queryFn: async () => {
@@ -32,14 +32,14 @@ export function useTobHint(
 		const qty = Number(quantity);
 		const price = Number(unitPrice);
 		const rate = Number(tobRate);
-		const fx = Number(fxRateStr);
+		const fx = Number(fxRate);
 
 		if (![qty, price, rate, fx].every((n) => Number.isFinite(n) && n > 0))
 			return null;
 
 		const hint = (qty * price * rate * fx).toFixed(2);
 		return hint === "0.00" ? null : hint;
-	}, [tobRate, quantity, unitPrice, fxRateStr]);
+	}, [tobRate, quantity, unitPrice, fxRate]);
 
-	return { tobHint };
+	return { tobHint, fxRate };
 }
