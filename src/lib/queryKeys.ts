@@ -6,5 +6,8 @@ export const queryKeys = {
 	portfolioHistory: ["portfolioHistory"] as const,
 	portfolioHistoryByPeriod: (period: Period) =>
 		["portfolioHistory", period] as const,
-  listings: ["listings"] as const
+	listings: ["listings"] as const,
+	fxRate: ["fxRate"] as const,
+	fxRateFor: (currency: string, date: string) =>
+		["fxRate", currency, date] as const,
 };
