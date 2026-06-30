@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 import { useBuy } from "@/hooks/use-buy";
+import { useFx } from "@/hooks/use-fx";
 import { useListings } from "@/hooks/use-listings";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { formatCurrency } from "@/lib/utils";
@@ -31,12 +32,12 @@ const BuyPage = () => {
 
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
-	const { tobHint, fxRate } = useTobHint(
-		executedAt,
+	const { data: fxRate } = useFx(executedAt, listingCurrency || "EUR");
+	const tobHint = useTobHint(
 		quantity,
 		unitPrice,
-		listingCurrency ?? "EUR",
 		listing?.tob_rate_hint,
+		fxRate,
 	);
 
 	const tobPristine = useStore(f.store, (s) => s.fieldMeta.tob_fee?.isPristine);
