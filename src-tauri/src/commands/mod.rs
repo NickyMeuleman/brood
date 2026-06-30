@@ -363,3 +363,40 @@ pub async fn get_rate(
 
     parse_decimal(&rate, "FX rate")
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_price(
+    db: State<'_, Db>,
+    listing_id: i64,
+    date: DateTime<Utc>,
+) -> Result<Decimal, AppError> {
+    let date = date.naive_utc().date();
+
+    let row = sqlx::query!(
+        r#"
+        SELECT close
+        FROM price_history
+        WHERE listing_id = ?1
+          AND date <= ?2
+        ORDER BY date DESC
+        LIMIT 1
+        "#,
+        listing_id,
+        date,
+    )
+    .fetch_optional(&db.pool)
+    .await
+    .map_err(AppError::from)?;
+
+    let close = row
+        .ok_or_else(|| {
+            AppError::Database(format!(
+                "No price for listing {listing_id} on or before {date}"
+            ))
+        })?
+        .close;
+
+    // AAPL june 5 2026 close 307.3399963378906
+    parse_decimal(&close, "price_history close")
+}

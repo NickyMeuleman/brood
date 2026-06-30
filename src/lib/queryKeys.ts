@@ -10,4 +10,7 @@ export const queryKeys = {
 	fxRate: ["fxRate"] as const,
 	fxRateFor: (currency: string, date: string) =>
 		["fxRate", currency, date] as const,
+	price: ["price"] as const,
+	priceFor: (listingId: number, date: string) =>
+		["price", listingId, date] as const,
 };

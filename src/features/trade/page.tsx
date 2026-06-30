@@ -7,6 +7,7 @@ import { useAppForm } from "@/hooks/form";
 import { useBuy } from "@/hooks/use-buy";
 import { useFx } from "@/hooks/use-fx";
 import { useListings } from "@/hooks/use-listings";
+import { usePrice } from "@/hooks/use-price";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { formatCurrency } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ const BuyPage = () => {
 			const parsed = buySchema.parse(value);
 			buy.mutate(parsed);
 		},
+		formId: "buyform",
 	});
 
 	const { data: listings = [], isLoading: listingsLoading } = useListings();
@@ -33,6 +35,7 @@ const BuyPage = () => {
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
 	const { data: fxRate } = useFx(executedAt, listingCurrency || "EUR");
+	const { data: priceHint } = usePrice(executedAt, listingId);
 	const tobHint = useTobHint(
 		quantity,
 		unitPrice,
@@ -42,17 +45,46 @@ const BuyPage = () => {
 
 	const tobPristine = useStore(f.store, (s) => s.fieldMeta.tob_fee?.isPristine);
 	const setTob = useCallback(
-		(v: string) => f.setFieldValue("tob_fee", v, { dontUpdateMeta: true }),
+		(v: string) => {
+			f.setFieldValue("tob_fee", v);
+			f.setFieldMeta("tob_fee", (prev) => ({
+				...prev,
+				isTouched: false,
+				isDirty: false,
+				isPristine: true,
+			}));
+		},
 		[f],
 	);
-
 	useEffect(() => {
-		if (!tobPristine) return;
-		tobHint === null ? setTob("") : setTob(tobHint);
+		if (!tobPristine || !tobHint) return;
+		setTob(tobHint);
 	}, [tobHint, tobPristine, setTob]);
 
+	const unitPricePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta.unit_price?.isPristine,
+	);
+	const setUnitPrice = useCallback(
+		(v: string) => {
+			f.setFieldValue("unit_price", v);
+			f.setFieldMeta("unit_price", (prev) => ({
+				...prev,
+				isTouched: false,
+				isDirty: false,
+				isPristine: true,
+			}));
+		},
+		[f],
+	);
+	useEffect(() => {
+		if (!unitPricePristine || !priceHint) return;
+		const v = Number(priceHint).toFixed(2);
+		setUnitPrice(v);
+	}, [priceHint, unitPricePristine, setUnitPrice]);
+
 	const base = Number(quantity) * Number(unitPrice);
-	const convertedBase = base * Number(fxRate);
+	const convertedBase = base * Number(fxRate || 1);
 	const total = convertedBase + Number(brokerFee) + Number(tobFee);
 
 	return (
