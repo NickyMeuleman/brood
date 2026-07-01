@@ -17,7 +17,7 @@ pub struct ListingInfo {
     pub instrument_name: String,
     pub isin: String,
     pub instrument_type: InstrumentType,
-    pub tob_rate_hint: Decimal,
+    pub tob_rate_hint: Option<TobRateHint>,
 }
 
 #[tauri::command]
@@ -237,6 +237,20 @@ pub async fn import_buy_csv(db: State<'_, Db>, csv_content: String) -> Result<()
     Ok(())
 }
 
+#[derive(Debug, Serialize, Type)]
+pub struct TobRateHint {
+    buy: Decimal,
+    sell: Decimal,
+}
+impl TobRateHint {
+    fn monorate(rate: Decimal) -> Self {
+        Self {
+            buy: rate,
+            sell: rate,
+        }
+    }
+}
+
 // https://curvo.eu/nl/artikel/beurstaks-tob
 fn tob_rate_hint(
     instrument_type: &InstrumentType,
@@ -244,30 +258,37 @@ fn tob_rate_hint(
     fsma_registered_direct: bool,
     family_fsma_registered: bool,
     domicile: Option<&str>,
-) -> Decimal {
+) -> Option<TobRateHint> {
     match instrument_type {
+        InstrumentType::Stock => Some(TobRateHint::monorate(Decimal::new(35, 4))),
         InstrumentType::Etf => {
-            if let Some(dom) = domicile
-                && !EEA_DOMICILES.contains(&dom)
-            {
-                return Decimal::new(35, 4);
-            }
-            if !(fsma_registered_direct || family_fsma_registered) {
-                return Decimal::new(12, 4);
-            }
-            if !accumulating {
-                return Decimal::new(12, 4);
-            }
-            Decimal::new(132, 4)
+            let fsma = fsma_registered_direct || family_fsma_registered;
+            let eer = domicile.is_some_and(|v| EEA_DOMICILES.contains(&v));
+            let rate = match (fsma, eer, accumulating) {
+                (true, _, false) => TobRateHint::monorate(Decimal::new(12, 4)),
+                (true, _, true) => TobRateHint::monorate(Decimal::new(132, 4)),
+                (false, true, _) => TobRateHint::monorate(Decimal::new(12, 4)),
+                (_, false, _) => TobRateHint::monorate(Decimal::new(35, 4)),
+            };
+            Some(rate)
         }
-        InstrumentType::Stock => Decimal::new(35, 4),
-        InstrumentType::Bond => Decimal::new(12, 4),
         InstrumentType::Fund => {
-            if !accumulating {
-                return Decimal::ZERO;
-            }
-            Decimal::new(132, 4)
+            let rate = match accumulating {
+                true => TobRateHint {
+                    buy: Decimal::ZERO,
+                    sell: Decimal::new(132, 4),
+                },
+                false => TobRateHint {
+                    buy: Decimal::ZERO,
+                    sell: Decimal::ZERO,
+                },
+            };
+            Some(rate)
         }
-        _ => Decimal::new(132, 4),
+        InstrumentType::Bond => Some(TobRateHint {
+            buy: Decimal::ZERO,
+            sell: Decimal::new(12, 4),
+        }),
+        InstrumentType::Other => None,
     }
 }

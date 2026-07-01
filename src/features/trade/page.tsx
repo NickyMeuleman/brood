@@ -39,6 +39,7 @@ const BuyPage = () => {
 	const tobHint = useTobHint(
 		quantity,
 		unitPrice,
+		"buy",
 		listing?.tob_rate_hint,
 		fxRate,
 	);
