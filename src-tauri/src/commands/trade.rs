@@ -292,3 +292,68 @@ fn tob_rate_hint(
         InstrumentType::Other => None,
     }
 }
+
+fn d(v: i64) -> Decimal {
+    Decimal::new(v, 0)
+}
+
+fn per_slice(amount: Decimal, fee: Decimal) -> Decimal {
+    let slices = (amount / d(10_000)).ceil();
+    fee * slices
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn broker_fee_hint(
+    broker: String,
+    quantity: String,
+    unit_price: String,
+    instrument_type: InstrumentType,
+    mic: String,
+    fx_rate: String,
+) -> Result<Option<Decimal>, AppError> {
+    //! TODO: create generic parse decimal function, this isn't related to the database
+    let amount = parse_decimal(&quantity, "quantity")?
+        * parse_decimal(&unit_price, "unit price")?
+        * parse_decimal(&fx_rate, "fx rate")?;
+    Ok(rebel_broker_fee(&instrument_type, amount, &mic))
+}
+
+fn rebel_broker_fee(
+    instrument_type: &InstrumentType,
+    amount: Decimal,
+    mic: &str,
+) -> Option<Decimal> {
+    match (instrument_type, mic) {
+        // Euronext Brussels
+        (InstrumentType::Stock, "XBRU") if amount <= d(2500) => Some(d(3)),
+        (InstrumentType::Stock, "XBRU") => Some(per_slice(amount, d(10))),
+        // Euronext Paris & Amsterdam
+        (InstrumentType::Stock, "XPAR" | "XAMS") if amount <= d(1000) => Some(d(3)),
+        (InstrumentType::Stock, "XPAR" | "XAMS") if amount <= d(2500) => Some(d(6)),
+        (InstrumentType::Stock, "XPAR" | "XAMS") => Some(per_slice(amount, d(10))),
+        // USA
+        (InstrumentType::Stock, "XNAS" | "XNYS" | "XASE") if amount <= d(1000) => Some(d(5)),
+        (InstrumentType::Stock, "XNAS" | "XNYS" | "XASE") if amount <= d(2500) => Some(d(9)),
+        (InstrumentType::Stock, "XNAS" | "XNYS" | "XASE") => Some(per_slice(amount, d(12))),
+        // Germany
+        (InstrumentType::Stock, "XETR" | "XFRA") if amount <= d(2500) => Some(d(12)),
+        (InstrumentType::Stock, "XETR" | "XFRA") => Some(per_slice(amount, d(15))),
+
+        // Euronext Brussels
+        (InstrumentType::Etf, "XBRU") if amount <= d(250) => Some(d(1)),
+        (InstrumentType::Etf, "XBRU") if amount <= d(1000) => Some(d(2)),
+        (InstrumentType::Etf, "XBRU") if amount <= d(2500) => Some(d(3)),
+        (InstrumentType::Etf, "XBRU") => Some(per_slice(amount, d(10))),
+        // Euronext Paris & Amsterdam
+        (InstrumentType::Etf, "XPAR" | "XAMS") if amount <= d(250) => Some(d(1)),
+        (InstrumentType::Etf, "XPAR" | "XAMS") if amount <= d(1000) => Some(d(2)),
+        (InstrumentType::Etf, "XPAR" | "XAMS") if amount <= d(2500) => Some(d(6)),
+        (InstrumentType::Etf, "XPAR" | "XAMS") => Some(per_slice(amount, d(10))),
+        // Germany
+        (InstrumentType::Etf, "XETR" | "XFRA") if amount <= d(2500) => Some(d(12)),
+        (InstrumentType::Etf, "XETR" | "XFRA") => Some(per_slice(amount, d(15))),
+
+        _ => None,
+    }
+}

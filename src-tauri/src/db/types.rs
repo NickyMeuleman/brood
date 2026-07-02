@@ -1,18 +1,14 @@
-// Internal database types. No main types here cross the Tauri
-// command boundary. Response structs with serde/specta derives
-// are defined alongside the commands that use them.
-//
 // Decimal values are stored as TEXT in SQLite. sqlx cannot decode
 // TEXT into rust_decimal::Decimal directly, so all decimal fields
 // are String here. Parse to Decimal when arithmetic is needed.
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // ============================================================
 // Enums
 // ============================================================
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, Deserialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InstrumentType {

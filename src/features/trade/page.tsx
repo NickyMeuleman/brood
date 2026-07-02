@@ -4,6 +4,7 @@ import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
+import { useBrokerFee } from "@/hooks/use-broker-fee";
 import { useBuy } from "@/hooks/use-buy";
 import { useFx } from "@/hooks/use-fx";
 import { useListings } from "@/hooks/use-listings";
@@ -83,6 +84,36 @@ const BuyPage = () => {
 		const v = Number(priceHint).toFixed(2);
 		setUnitPrice(v);
 	}, [priceHint, unitPricePristine, setUnitPrice]);
+
+	const { data: brokerFeeHint } = useBrokerFee(
+		"re=bel",
+		quantity,
+		unitPrice,
+		listing?.instrument_type || "STOCK",
+		listing?.exchange_mic || "XAMS",
+		fxRate || "1",
+	);
+	const brokerFeePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta.broker_fee?.isPristine,
+	);
+	const setBrokerFee = useCallback(
+		(v: string) => {
+			f.setFieldValue("broker_fee", v);
+			f.setFieldMeta("broker_fee", (prev) => ({
+				...prev,
+				isTouched: false,
+				isDirty: false,
+				isPristine: true,
+			}));
+		},
+		[f],
+	);
+	useEffect(() => {
+		if (!brokerFeePristine || !brokerFeeHint) return;
+		const v = Number(brokerFeeHint).toFixed(2);
+		setBrokerFee(v);
+	}, [brokerFeeHint, brokerFeePristine, setBrokerFee]);
 
 	const base = Number(quantity) * Number(unitPrice);
 	const convertedBase = base * Number(fxRate || 1);

@@ -14,7 +14,7 @@ use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
 };
-use commands::trade::{buy, get_listings, import_buy_csv};
+use commands::trade::{broker_fee_hint, buy, get_listings, import_buy_csv};
 use commands::{get_price, get_rate};
 use db::init_db;
 use reqwest;
@@ -77,7 +77,8 @@ pub fn run() {
         buy,
         import_buy_csv,
         get_rate,
-        get_price
+        get_price,
+        broker_fee_hint
     ]);
 
     #[cfg(debug_assertions)]
