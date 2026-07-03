@@ -4,7 +4,7 @@ pub mod lot_data;
 pub mod sync;
 pub mod trade;
 
-use crate::{AppError, db::Db, parse_decimal};
+use crate::{AppError, db::Db, parse_decimal_internal};
 use chrono::{DateTime, Datelike, Days, Months, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -207,7 +207,7 @@ pub async fn get_rates(
         |mut acc, row| {
             acc.entry(row.currency).or_default().insert(
                 row.date,
-                parse_decimal(&row.rate_to_eur, "fx_rate rate_to_eur")?,
+                parse_decimal_internal(&row.rate_to_eur, "fx_rate rate_to_eur")?,
             );
             Ok(acc)
         },
@@ -238,7 +238,7 @@ pub async fn get_prices(
         |mut acc, row| {
             acc.entry(row.listing_id)
                 .or_default()
-                .insert(row.date, parse_decimal(&row.close, "close price")?);
+                .insert(row.date, parse_decimal_internal(&row.close, "close price")?);
             Ok(acc)
         },
     )
@@ -272,7 +272,7 @@ pub async fn get_prices_on_or_before(
     .map(|r| {
         Ok((
             r.listing_id,
-            parse_decimal(&r.close, "price_history close")?,
+            parse_decimal_internal(&r.close, "price_history close")?,
         ))
     })
     .collect()
@@ -305,7 +305,7 @@ pub async fn get_rates_on_or_before(
     .map(|r| {
         Ok((
             r.currency,
-            parse_decimal(&r.rate_to_eur, "fx_rate rate_to_eur")?,
+            parse_decimal_internal(&r.rate_to_eur, "fx_rate rate_to_eur")?,
         ))
     })
     .collect()
@@ -322,7 +322,7 @@ pub fn resolve_rate(
     rates
         .get(currency)
         .copied()
-        .ok_or_else(|| AppError::Database(format!("No FX rate for {currency}: {context}")))
+        .ok_or_else(|| AppError::MissingData(format!("No FX rate for {currency}: {context}")))
 }
 
 #[tauri::command]
@@ -361,7 +361,7 @@ pub async fn get_rate(
         })?
         .rate_to_eur;
 
-    parse_decimal(&rate, "FX rate")
+    parse_decimal_internal(&rate, "FX rate")
 }
 
 #[tauri::command]
@@ -397,6 +397,5 @@ pub async fn get_price(
         })?
         .close;
 
-    // AAPL june 5 2026 close 307.3399963378906
-    parse_decimal(&close, "price_history close")
+    parse_decimal_internal(&close, "price_history close")
 }

@@ -27,30 +27,52 @@ use tauri::{Manager, async_runtime::block_on};
 use tauri_specta::{Builder, collect_commands};
 use thiserror::Error;
 
-pub fn parse_decimal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
-    Decimal::from_str(s).map_err(|_| AppError::Database(format!("Malformed {ctx}: {s}")))
+pub fn parse_decimal_internal(s: &str, ctx: &str) -> Result<Decimal, AppError> {
+    Decimal::from_str(s)
+        .map_err(|_| AppError::Internal(format!("Corrupt stored value ({ctx}): '{s}'")))
+}
+
+pub fn parse_decimal_external(s: &str, ctx: &str) -> Result<Decimal, AppError> {
+    Decimal::from_str(s).map_err(|_| AppError::Validation(format!("Invalid {ctx}: '{s}'")))
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "type", content = "data")]
 pub enum AppError {
-    #[error("Data not found")]
-    NotFound,
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Invalid input: {0}")]
+    Validation(String),
+
+    #[error("Missing market data: {0}")]
+    MissingData(String),
 
     #[error("Database error: {0}")]
     Database(String),
 
-    #[error("Internal server error")]
-    Internal,
+    #[error("External service error: {0}")]
+    ExternalService(String),
 
-    #[error("Timeout error: {0}")]
+    #[error("Internal error: {0}")]
+    Internal(String),
+
+    #[error("Timeout: {0}")]
     Timeout(String),
 }
 
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        match err {
-            sqlx::Error::RowNotFound => AppError::NotFound,
+        match &err {
+            sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
+            sqlx::Error::Database(db_err)
+                if db_err.message().contains("UNIQUE constraint failed") =>
+            {
+                AppError::Validation(
+                    "Tried to insert a duplicate. This trade or order probably already exists"
+                        .into(),
+                )
+            }
             _ => AppError::Database(err.to_string()),
         }
     }
