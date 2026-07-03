@@ -1,13 +1,13 @@
 use crate::db::Db;
 use crate::sync::fx::{
-    get_full_fx_sync_tasks, run_fx_sync_tasks, sync_all_fx, sync_one_currency, FXSyncOutcome,
-    FxSyncTask,
+    FXSyncOutcome, FxSyncTask, get_full_fx_sync_tasks, run_fx_sync_tasks, sync_all_fx,
+    sync_one_currency,
 };
 use crate::sync::prices::{
-    get_full_price_sync_tasks, run_price_sync_tasks, sync_all_prices, sync_one_listing,
-    PriceSyncOutcome, PriceSyncTask,
+    PriceSyncOutcome, PriceSyncTask, get_full_price_sync_tasks, run_price_sync_tasks,
+    sync_all_prices, sync_one_listing,
 };
-use crate::{mic_timezone, AppError, HttpClient};
+use crate::{AppError, HttpClient, mic_timezone};
 use chrono::{NaiveDate, Utc};
 use std::time::Duration;
 use tauri::State;
@@ -73,7 +73,7 @@ pub async fn force_update_one_listing_prices(
     mic: String,
     ticker: String,
 ) -> Result<PriceSyncOutcome, AppError> {
-    let tz = mic_timezone(&mic).map_err(|_| AppError::Internal)?;
+    let tz = mic_timezone(&mic).map_err(|e| AppError::Internal(e.to_string()))?;
     let to = Utc::now()
         .with_timezone(&tz)
         .date_naive()
