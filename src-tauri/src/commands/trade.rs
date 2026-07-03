@@ -1,6 +1,6 @@
 use crate::db::Db;
 use crate::db::types::InstrumentType;
-use crate::{AppError, EEA_DOMICILES, parse_decimal};
+use crate::{AppError, EEA_DOMICILES, parse_decimal_external};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -91,14 +91,14 @@ pub struct CreateBuyTradeInput {
 }
 
 async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<(), AppError> {
-    let quantity = parse_decimal(&fields.quantity, "quantity")?;
+    let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
     if quantity <= Decimal::ZERO {
-        return Err(AppError::Database("quantity must be positive".into()));
+        return Err(AppError::Validation("quantity must be positive".into()));
     }
     let quantity_str = quantity.to_string();
-    let unit_price = parse_decimal(&fields.unit_price, "unit_price")?;
+    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
     if unit_price <= Decimal::ZERO {
-        return Err(AppError::Database("unit_price must be positive".into()));
+        return Err(AppError::Validation("unit_price must be positive".into()));
     }
     let unit_price_str = unit_price.to_string();
 
@@ -108,9 +108,9 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
                 None => Ok(None),
                 Some(v) if v.is_empty() || v == "0" => Ok(None),
                 Some(v) => {
-                    let d = parse_decimal(&v, ctx)?;
+                    let d = parse_decimal_external(&v, ctx)?;
                     if d < Decimal::ZERO {
-                        return Err(AppError::Database(format!("{ctx} must be non-negative")));
+                        return Err(AppError::Validation(format!("{ctx} must be non-negative")));
                     }
                     Ok(Some(d))
                 }
@@ -134,7 +134,10 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     )
     .fetch_optional(pool)
     .await?
-    .ok_or(AppError::NotFound)?;
+    .ok_or(AppError::NotFound(format!(
+        "Listing {} not found (or delisted)",
+        fields.listing_id
+    )))?;
 
     let mut tx = pool.begin().await?;
 
@@ -216,25 +219,44 @@ pub async fn buy(db: State<'_, Db>, fields: CreateBuyTradeInput) -> Result<(), A
     buy_core(&db.pool, fields).await
 }
 
+#[derive(Debug, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum ImportRowOutcome {
+    Success { row: usize },
+    Error { row: usize, message: String },
+}
+
 #[tauri::command]
 #[specta::specta]
-pub async fn import_buy_csv(db: State<'_, Db>, csv_content: String) -> Result<(), AppError> {
-    // Set up the CSV reader to parse headers matching your struct fields
+pub async fn import_buy_csv(
+    db: State<'_, Db>,
+    csv_content: String,
+) -> Result<Vec<ImportRowOutcome>, AppError> {
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(true)
-        .trim(csv::Trim::All) // Clean up accidental whitespace around fields
+        .trim(csv::Trim::All)
         .from_reader(csv_content.as_bytes());
 
-    // Loop through rows and pipe them into your core business logic
-    for (index, result) in rdr.deserialize::<CreateBuyTradeInput>().enumerate() {
-        let fields = result.map_err(|e| {
-            AppError::Database(format!("CSV row {} parsing error: {}", index + 1, e))
-        })?;
+    let mut outcomes = Vec::new();
 
-        buy_core(&db.pool, fields).await?;
+    for (index, result) in rdr.deserialize::<CreateBuyTradeInput>().enumerate() {
+        let row = index + 1;
+        match result {
+            Err(e) => outcomes.push(ImportRowOutcome::Error {
+                row,
+                message: format!("Could not parse row: {e}"),
+            }),
+            Ok(fields) => match buy_core(&db.pool, fields).await {
+                Ok(()) => outcomes.push(ImportRowOutcome::Success { row }),
+                Err(e) => outcomes.push(ImportRowOutcome::Error {
+                    row,
+                    message: e.to_string(),
+                }),
+            },
+        }
     }
 
-    Ok(())
+    Ok(outcomes)
 }
 
 #[derive(Debug, Serialize, Type)]
@@ -312,10 +334,9 @@ pub fn broker_fee_hint(
     mic: String,
     fx_rate: String,
 ) -> Result<Option<Decimal>, AppError> {
-    //! TODO: create generic parse decimal function, this isn't related to the database
-    let amount = parse_decimal(&quantity, "quantity")?
-        * parse_decimal(&unit_price, "unit price")?
-        * parse_decimal(&fx_rate, "fx rate")?;
+    let amount = parse_decimal_external(&quantity, "quantity")?
+        * parse_decimal_external(&unit_price, "unit price")?
+        * parse_decimal_external(&fx_rate, "fx rate")?;
     Ok(rebel_broker_fee(&instrument_type, amount, &mic))
 }
 

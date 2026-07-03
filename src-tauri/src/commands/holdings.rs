@@ -5,7 +5,7 @@ use crate::commands::{
 };
 use crate::db::types::InstrumentType;
 use crate::db::Db;
-use crate::{parse_decimal, AppError};
+use crate::{parse_decimal_internal, AppError};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
@@ -267,8 +267,8 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
 
     let mut split_multipliers: HashMap<i64, Decimal> = HashMap::new();
     for split in splits {
-        let from = parse_decimal(&split.ratio_from, "ratio_from")?;
-        let to = parse_decimal(&split.ratio_to, "ratio_to")?;
+        let from = parse_decimal_internal(&split.ratio_from, "ratio_from")?;
+        let to = parse_decimal_internal(&split.ratio_to, "ratio_to")?;
         let factor = from / to;
 
         if let Some(listing_id) = split.listing_id {
@@ -350,7 +350,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
 
     for (listing_id, h) in holdings.iter_mut() {
         h.unit_price = latest_prices.get(listing_id).copied().ok_or_else(|| {
-            AppError::Database(format!("Missing current price for listing_id {listing_id}"))
+            AppError::MissingData(format!("Missing current price for listing_id {listing_id}"))
         })?;
         h.period_start_unit_price = period_start_prices.get(listing_id).copied();
     }
