@@ -2,7 +2,7 @@ use crate::commands::get_rates;
 use crate::commands::latest_on_or_before;
 use crate::commands::CurrencyPair;
 use crate::db::types::InstrumentType;
-use crate::parse_decimal;
+use crate::parse_decimal_internal;
 use crate::AppError;
 use chrono::{NaiveDate, NaiveDateTime};
 use rust_decimal::Decimal;
@@ -212,8 +212,8 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
 
     let mut fee_by_trade: HashMap<i64, TradeFeeAgg> = HashMap::new();
     for r in &fee_rows {
-        let fee = parse_decimal(&r.fee_amount, "fee amount")?;
-        let trade_qty = parse_decimal(&r.trade_qty, "trade qty")?;
+        let fee = parse_decimal_internal(&r.fee_amount, "fee amount")?;
+        let trade_qty = parse_decimal_internal(&r.trade_qty, "trade qty")?;
         let date = r.executed_at.date();
 
         let fee_eur = if r.fee_currency == "EUR" {
@@ -223,7 +223,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                 .get(&r.fee_currency)
                 .and_then(|m| latest_on_or_before(m, date))
                 .ok_or_else(|| {
-                    AppError::Database(format!(
+                    AppError::MissingData(format!(
                         "No FX rate for {} on {date} (fee currency)",
                         r.fee_currency
                     ))
@@ -240,7 +240,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                 .get(&r.listing_currency)
                 .and_then(|m| latest_on_or_before(m, date))
                 .ok_or_else(|| {
-                    AppError::Database(format!(
+                    AppError::MissingData(format!(
                         "No FX rate for {} on {date} (listing currency)",
                         r.listing_currency
                     ))
@@ -274,7 +274,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     .await?;
 
     for row in sell_rows {
-        let qty = parse_decimal(&row.quantity, "sell quantity")?;
+        let qty = parse_decimal_internal(&row.quantity, "sell quantity")?;
         sells_by_lot
             .entry(row.origin_lot_id)
             .or_default()
@@ -294,8 +294,8 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     let mut lot_costs: HashMap<i64, Decimal> = HashMap::new();
 
     for r in &raw_lots {
-        let qty = parse_decimal(&r.qty_at_acquisition, "lot qty")?;
-        let price = parse_decimal(&r.price_per_unit, "lot price")?;
+        let qty = parse_decimal_internal(&r.qty_at_acquisition, "lot qty")?;
+        let price = parse_decimal_internal(&r.price_per_unit, "lot price")?;
         let cost = qty * price;
         lot_costs.insert(r.lot_id, cost);
 
@@ -305,7 +305,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                 let date = r
                     .trade_executed_at
                     .ok_or_else(|| {
-                        AppError::Database(format!(
+                        AppError::MissingData(format!(
                             "Lot {} has source_trade_id but missing trade executed_at",
                             r.lot_id
                         ))
@@ -333,16 +333,16 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             // proportioned by the ratio of this lot's cost to the parent's cost.
             (None, Some(parent_id)) => {
                 let parent_date = *acquisition_dates.get(&parent_id).ok_or_else(|| {
-                    AppError::Database(format!(
+                    AppError::Internal(format!(
                         "Parent lot {parent_id} not yet processed before child lot {}",
                         r.lot_id
                     ))
                 })?;
                 let parent_cost = *lot_costs.get(&parent_id).ok_or_else(|| {
-                    AppError::Database(format!("Cost missing for parent lot {parent_id}"))
+                    AppError::Internal(format!("Cost missing for parent lot {parent_id}"))
                 })?;
                 let parent_fees = *lot_fees.get(&parent_id).ok_or_else(|| {
-                    AppError::Database(format!("Fees missing for parent lot {parent_id}"))
+                    AppError::Internal(format!("Fees missing for parent lot {parent_id}"))
                 })?;
 
                 let ratio = if parent_cost.is_zero() {
@@ -360,7 +360,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             }
 
             (None, None) => {
-                return Err(AppError::Database(format!(
+                return Err(AppError::Internal(format!(
                     "Lot {} has neither source_trade_id nor parent_lot_id",
                     r.lot_id
                 )))
@@ -384,7 +384,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                 .get(&r.currency_code)
                 .and_then(|m| latest_on_or_before(m, acquisition_date))
                 .ok_or_else(|| {
-                    AppError::Database(format!(
+                    AppError::MissingData(format!(
                         "No FX rate for {} on {acquisition_date} (lot {} acquisition)",
                         r.currency_code, r.lot_id
                     ))
@@ -397,7 +397,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             acquisition_date
         } else {
             *ca_start_dates.get(&r.lot_id).ok_or_else(|| {
-                AppError::Database(format!(
+                AppError::Internal(format!(
                     "CA lot {} has no corporate_action effective_date",
                     r.lot_id
                 ))
@@ -413,8 +413,8 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             exchange_mic: r.exchange_mic.clone(),
             instrument_type: r.instrument_type.clone(),
             currency_code: r.currency_code.clone(),
-            qty_at_acquisition: parse_decimal(&r.qty_at_acquisition, "qty_at_acquisition")?,
-            price_per_unit: parse_decimal(&r.price_per_unit, "price_per_unit")?,
+            qty_at_acquisition: parse_decimal_internal(&r.qty_at_acquisition, "qty_at_acquisition")?,
+            price_per_unit: parse_decimal_internal(&r.price_per_unit, "price_per_unit")?,
             existence_start,
             close_date: lot_close_dates.get(&r.lot_id).copied(),
             acquisition_date,
