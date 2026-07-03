@@ -1,5 +1,5 @@
 use crate::sync::yahoo::fetch_prices;
-use crate::{mic_timezone, AppError};
+use crate::{AppError, mic_timezone};
 use chrono::{Days, NaiveDate, Utc};
 use reqwest::Client;
 use sqlx::{Pool, Sqlite};
@@ -95,7 +95,7 @@ pub async fn get_price_sync_tasks(pool: &Pool<Sqlite>) -> Result<Vec<PriceSyncTa
             (_, Some(earliest)) => earliest,
             (None, None) => continue,
         };
-        let tz = mic_timezone(&row.exchange_mic).map_err(|_| AppError::Internal)?;
+        let tz = mic_timezone(&row.exchange_mic).map_err(|e| AppError::Internal(e.to_string()))?;
         let to = Utc::now()
             .with_timezone(&tz)
             .date_naive()
@@ -144,7 +144,7 @@ pub async fn get_full_price_sync_tasks(
     let tasks = rows
         .into_iter()
         .map(|row| {
-            let tz = mic_timezone(&row.mic).map_err(|_| AppError::Internal)?;
+            let tz = mic_timezone(&row.mic).map_err(|e| AppError::Internal(e.to_string()))?;
             let to = Utc::now()
                 .with_timezone(&tz)
                 .date_naive()
@@ -183,7 +183,7 @@ pub async fn sync_one_listing(
 ) -> Result<usize, AppError> {
     let bars = fetch_prices(client, &task.ticker, &task.mic, task.from, task.to)
         .await
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
     if bars.is_empty() {
         return Ok(0);

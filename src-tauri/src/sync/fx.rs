@@ -169,7 +169,7 @@ pub async fn sync_one_currency(
 ) -> Result<usize, AppError> {
     let rates = fetch_rates(client, &task.currency, task.from, task.to)
         .await
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
     if rates.is_empty() {
         // the gap is entirely ECB non-business days.
