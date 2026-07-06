@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT close\n        FROM price_history\n        WHERE listing_id = ?1\n          AND date <= ?2\n        ORDER BY date DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "close",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b7575bd749041182dd8a59a68041bb8da0985e65d296d42a86ede70779a72af4"
+}

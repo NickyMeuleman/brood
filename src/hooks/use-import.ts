@@ -12,10 +12,17 @@ export function useImportBuyCSV() {
 			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return res.data;
 		},
-		onSuccess: () => {
+		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
 			queryClient.invalidateQueries({ queryKey: queryKeys.portfolioHistory });
-			toast.success("Buys imported");
+			const errorCount = data.filter((o) => o.status === "error").length;
+			if (errorCount === 0) {
+				toast.success(`${data.length} buys imported`);
+			} else {
+				toast.warning(
+					`${data.length - errorCount} imported, ${errorCount} failed`,
+				);
+			}
 		},
 		onError: (e) => {
 			toast.error("Buy import failed", { description: e.message });

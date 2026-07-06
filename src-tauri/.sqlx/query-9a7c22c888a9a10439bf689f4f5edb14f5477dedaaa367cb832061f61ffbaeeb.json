@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            li.id               AS \"id!\",\n            li.ticker           AS \"ticker!\",\n            li.exchange_mic     AS \"exchange_mic!\",\n            li.currency_code    AS \"currency_code!\",\n            i.name              AS \"instrument_name!\",\n            i.isin              AS \"isin!\",\n            i.instrument_type   AS \"instrument_type!: InstrumentType\",\n            i.accumulating      AS \"accumulating!\",\n            i.fsma_registered   AS \"fsma_registered!\",\n            i.domicile,\n            CASE WHEN (\n                i.fund_family_id IS NOT NULL AND EXISTS (\n                    SELECT 1 FROM instrument i2\n                    WHERE i2.fund_family_id = i.fund_family_id\n                    AND i2.id != i.id\n                    AND i2.fsma_registered = 1\n                )\n            ) THEN 1 ELSE 0 END AS \"fsma_registered_family\"\n        FROM listing li\n        JOIN instrument i ON i.id = li.instrument_id\n        WHERE li.delisted_at IS NULL\n        ORDER BY li.ticker\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ticker!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "exchange_mic!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "currency_code!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "instrument_name!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "isin!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "instrument_type!: InstrumentType",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "accumulating!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "fsma_registered!",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "domicile",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "fsma_registered_family",
+        "ordinal": 10,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "9a7c22c888a9a10439bf689f4f5edb14f5477dedaaa367cb832061f61ffbaeeb"
+}

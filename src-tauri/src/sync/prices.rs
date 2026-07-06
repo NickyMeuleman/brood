@@ -2,7 +2,7 @@ use crate::sync::yahoo::fetch_prices;
 use crate::{AppError, mic_timezone};
 use chrono::{Days, NaiveDate, Utc};
 use reqwest::Client;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Sqlite, pool};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -230,4 +230,54 @@ pub async fn sync_one_listing(
 
     tx.commit().await.map_err(AppError::from)?;
     Ok(count)
+}
+
+pub async fn force_sync_one_listing(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+    listing_id: i64,
+    mic: String,
+    ticker: String,
+) -> Result<PriceSyncOutcome, AppError> {
+    let tz = mic_timezone(&mic).map_err(|e| AppError::Internal(e.to_string()))?;
+    let to = Utc::now()
+        .with_timezone(&tz)
+        .date_naive()
+        .pred_opt()
+        .expect("valid date");
+
+    // get earliest data, fallback to yesterday if not found
+    let from = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) as "d: NaiveDate"
+        FROM lot l
+        LEFT JOIN trade t ON t.id = l.source_trade_id
+        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
+        WHERE l.listing_id = ?
+        "#,
+        listing_id
+    )
+    .fetch_one(pool)
+    .await?
+    .unwrap_or(to);
+
+    let task = PriceSyncTask {
+        listing_id,
+        ticker: ticker.clone(),
+        mic,
+        from,
+        to,
+    };
+
+    let added = sync_one_listing(pool, client, &task).await?;
+    Ok(PriceSyncOutcome::Success { ticker, added })
+}
+
+pub async fn force_sync_all_prices(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+) -> Result<Vec<PriceSyncOutcome>, AppError> {
+    let tasks = get_full_price_sync_tasks(pool).await?;
+    let outcomes = run_price_sync_tasks(pool, client, tasks).await;
+    Ok(outcomes)
 }

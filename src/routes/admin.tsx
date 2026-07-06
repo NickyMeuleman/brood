@@ -5,6 +5,7 @@ import { useMemo, useRef } from "react";
 import {
 	commands,
 	type FXSyncOutcome,
+	type ImportRowOutcome,
 	type PriceSyncOutcome,
 } from "@/bindings";
 import { Button } from "@/components/ui/button";
@@ -145,7 +146,6 @@ function RouteComponent() {
 					Import
 				</h3>
 				<div className="flex items-center gap-3">
-					{/* Hidden native input restricted to CSVs */}
 					<input
 						type="file"
 						ref={fileInputRef}
@@ -160,8 +160,9 @@ function RouteComponent() {
 					>
 						Import buy trade csv
 					</Button>
-					<MutationStatus mutation={allPrices} />
+					<MutationStatus mutation={importMutation} />
 				</div>
+				<ImportOutcomeList outcomes={importMutation.data} />
 			</section>
 		</div>
 	);
@@ -287,5 +288,34 @@ function CurrencyRow({ currency }: { currency: string }) {
 				/>
 			)}
 		</div>
+	);
+}
+
+function ImportOutcomeList({
+	outcomes,
+}: {
+	outcomes: ImportRowOutcome[] | undefined;
+}) {
+	if (!outcomes?.length) return null;
+	return (
+		<ul className="space-y-1 text-sm">
+			{outcomes.map((o) => (
+				<li
+					key={o.row}
+					className={cn(
+						"flex items-center gap-2",
+						o.status === "error" && "text-destructive",
+					)}
+				>
+					{o.status === "success" ? (
+						<CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+					) : (
+						<AlertCircle className="h-3.5 w-3.5 shrink-0" />
+					)}
+					<span className="font-mono">Row {o.row}</span>
+					{o.status === "error" && <span>{o.message}</span>}
+				</li>
+			))}
+		</ul>
 	);
 }

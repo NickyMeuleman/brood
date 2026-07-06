@@ -1,17 +1,32 @@
 use crate::db::Db;
-use crate::sync::fx::{
-    FXSyncOutcome, FxSyncTask, get_full_fx_sync_tasks, run_fx_sync_tasks, sync_all_fx,
-    sync_one_currency,
-};
+use crate::sync::fx::{FXSyncOutcome, force_sync_all_fx, force_sync_one_currency, sync_all_fx};
 use crate::sync::prices::{
-    PriceSyncOutcome, PriceSyncTask, get_full_price_sync_tasks, run_price_sync_tasks,
-    sync_all_prices, sync_one_listing,
+    PriceSyncOutcome, force_sync_all_prices, force_sync_one_listing, sync_all_prices,
 };
-use crate::{AppError, HttpClient, mic_timezone};
-use chrono::{NaiveDate, Utc};
+use crate::{AppError, HttpClient};
 use std::time::Duration;
 use tauri::State;
 use tokio;
+
+/// Applied to every sync command so a stalled network request can never
+/// hang a command indefinitely. Sits above the client-level timeout in
+/// lib.rs as a backstop, not the primary guard.
+const SYNC_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// cleaner implementation than a Trait ... for now
+async fn with_timeout<T>(
+    label: impl Into<String>,
+    fut: impl Future<Output = Result<T, AppError>>,
+) -> Result<T, AppError> {
+    match tokio::time::timeout(SYNC_TIMEOUT, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::Timeout(format!(
+            "{} timed out after {}s",
+            label.into(),
+            SYNC_TIMEOUT.as_secs()
+        ))),
+    }
+}
 
 #[derive(Debug, serde::Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "camelCase")]
@@ -26,7 +41,7 @@ pub async fn sync(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<SyncOutcomes, AppError> {
-    let sync_task = async {
+    let fut = async {
         let (fx_outcomes, prices_outcomes) = tokio::try_join!(
             sync_all_fx(&db.pool, &http.client),
             sync_all_prices(&db.pool, &http.client)
@@ -37,11 +52,7 @@ pub async fn sync(
             prices: prices_outcomes,
         })
     };
-
-    match tokio::time::timeout(Duration::from_secs(15), sync_task).await {
-        Ok(result) => result,
-        Err(_) => Err(AppError::Timeout("Sync timed out after 15s".into())),
-    }
+    with_timeout("Sync", fut).await
 }
 
 #[tauri::command]
@@ -50,8 +61,11 @@ pub async fn sync_prices(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    let outcomes = sync_all_prices(&db.pool, &http.client).await?;
-    Ok(outcomes)
+    let fut = async {
+        let outcomes = sync_all_prices(&db.pool, &http.client).await?;
+        Ok(outcomes)
+    };
+    with_timeout("Price sync", fut).await
 }
 
 #[tauri::command]
@@ -60,8 +74,11 @@ pub async fn sync_fx(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<FXSyncOutcome>, AppError> {
-    let outcomes = sync_all_fx(&db.pool, &http.client).await?;
-    Ok(outcomes)
+    let fut = async {
+        let outcomes = sync_all_fx(&db.pool, &http.client).await?;
+        Ok(outcomes)
+    };
+    with_timeout("FX sync", fut).await
 }
 
 #[tauri::command]
@@ -73,38 +90,11 @@ pub async fn force_update_one_listing_prices(
     mic: String,
     ticker: String,
 ) -> Result<PriceSyncOutcome, AppError> {
-    let tz = mic_timezone(&mic).map_err(|e| AppError::Internal(e.to_string()))?;
-    let to = Utc::now()
-        .with_timezone(&tz)
-        .date_naive()
-        .pred_opt()
-        .expect("valid date");
-
-    // get earliest data, fallback to yesterday if not found
-    let from = sqlx::query_scalar!(
-        r#"
-        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) as "d: NaiveDate"
-        FROM lot l
-        LEFT JOIN trade t ON t.id = l.source_trade_id
-        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
-        WHERE l.listing_id = ?
-        "#,
-        listing_id
+    with_timeout(
+        format!("Price sync for {ticker}"),
+        force_sync_one_listing(&db.pool, &http.client, listing_id, mic, ticker),
     )
-    .fetch_one(&db.pool)
-    .await?
-    .unwrap_or(to);
-
-    let task = PriceSyncTask {
-        listing_id,
-        ticker: ticker.clone(),
-        mic,
-        from,
-        to,
-    };
-
-    let added = sync_one_listing(&db.pool, &http.client, &task).await?;
-    Ok(PriceSyncOutcome::Success { ticker, added })
+    .await
 }
 
 #[tauri::command]
@@ -113,9 +103,11 @@ pub async fn force_update_all_prices(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<PriceSyncOutcome>, AppError> {
-    let tasks = get_full_price_sync_tasks(&db.pool).await?;
-    let outcomes = run_price_sync_tasks(&db.pool, &http.client, tasks).await;
-    Ok(outcomes)
+    with_timeout(
+        "Full price sync",
+        force_sync_all_prices(&db.pool, &http.client),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -125,30 +117,11 @@ pub async fn force_update_one_currency_fx(
     http: State<'_, HttpClient>,
     currency: String,
 ) -> Result<FXSyncOutcome, AppError> {
-    let to = Utc::now().date_naive().pred_opt().expect("valid date");
-    let from = sqlx::query_scalar!(
-        r#"
-        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) AS "d: NaiveDate"
-        FROM lot l
-        LEFT JOIN listing li ON li.id = l.listing_id
-        LEFT JOIN trade t    ON t.id  = l.source_trade_id
-        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
-        WHERE li.currency_code = ?
-        "#,
-        currency
+    with_timeout(
+        format!("FX sync for {currency}"),
+        force_sync_one_currency(&db.pool, &http.client, currency),
     )
-    .fetch_one(&db.pool)
-    .await?
-    .unwrap_or(to);
-
-    let task = FxSyncTask {
-        currency: currency.clone(),
-        from,
-        to,
-    };
-
-    let added = sync_one_currency(&db.pool, &http.client, &task).await?;
-    Ok(FXSyncOutcome::Success { currency, added })
+    .await
 }
 
 #[tauri::command]
@@ -157,7 +130,5 @@ pub async fn force_update_all_fx(
     db: State<'_, Db>,
     http: State<'_, HttpClient>,
 ) -> Result<Vec<FXSyncOutcome>, AppError> {
-    let tasks = get_full_fx_sync_tasks(&db.pool).await?;
-    let outcomes = run_fx_sync_tasks(&db.pool, &http.client, tasks).await;
-    Ok(outcomes)
+    with_timeout("Full FX sync", force_sync_all_fx(&db.pool, &http.client)).await
 }

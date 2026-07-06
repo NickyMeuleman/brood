@@ -1,4 +1,4 @@
-use crate::{sync::ecb::fetch_rates, AppError};
+use crate::{AppError, sync::ecb::fetch_rates};
 use chrono::{Days, NaiveDate, Utc};
 use reqwest::Client;
 use sqlx::{Pool, Sqlite};
@@ -207,4 +207,44 @@ pub async fn sync_one_currency(
 
     tx.commit().await.map_err(AppError::from)?;
     Ok(count)
+}
+
+pub async fn force_sync_one_currency(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+    currency: String,
+) -> Result<FXSyncOutcome, AppError> {
+    let to = Utc::now().date_naive().pred_opt().expect("valid date");
+    let from = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(COALESCE(DATE(t.executed_at), DATE(ca.effective_date))) AS "d: NaiveDate"
+        FROM lot l
+        LEFT JOIN listing li ON li.id = l.listing_id
+        LEFT JOIN trade t    ON t.id  = l.source_trade_id
+        LEFT JOIN corporate_action ca ON ca.id = l.source_ca_id
+        WHERE li.currency_code = ?
+        "#,
+        currency
+    )
+    .fetch_one(pool)
+    .await?
+    .unwrap_or(to);
+
+    let task = FxSyncTask {
+        currency: currency.clone(),
+        from,
+        to,
+    };
+
+    let added = sync_one_currency(pool, client, &task).await?;
+    Ok(FXSyncOutcome::Success { currency, added })
+}
+
+pub async fn force_sync_all_fx(
+    pool: &Pool<Sqlite>,
+    client: &Client,
+) -> Result<Vec<FXSyncOutcome>, AppError> {
+    let tasks = get_full_fx_sync_tasks(pool).await?;
+    let outcomes = run_fx_sync_tasks(pool, client, tasks).await;
+    Ok(outcomes)
 }

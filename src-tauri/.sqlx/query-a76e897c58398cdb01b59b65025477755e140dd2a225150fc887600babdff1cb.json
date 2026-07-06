@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT rate_to_eur\n        FROM fx_rate\n        WHERE currency = ?1\n          AND date <= ?2\n        ORDER BY date DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "rate_to_eur",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a76e897c58398cdb01b59b65025477755e140dd2a225150fc887600babdff1cb"
+}

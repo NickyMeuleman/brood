@@ -22,6 +22,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::str::FromStr;
+use std::time::Duration;
 use sync::yahoo::Error as YahooError;
 use tauri::{Manager, async_runtime::block_on};
 use tauri_specta::{Builder, collect_commands};
@@ -123,7 +124,10 @@ pub fn run() {
 
             // store shared reqwest client
             let http = HttpClient {
-                client: reqwest::Client::new(),
+                client: reqwest::Client::builder()
+                    .timeout(Duration::from_secs(10))
+                    .build()
+                    .expect("reqwest client build"),
             };
             app.manage(http);
 

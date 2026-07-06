@@ -12,15 +12,14 @@ export function useBrokerFee(
 	fxRate: string,
 ) {
 	return useQuery({
-		queryKey: [
-			"brokerFee",
+		queryKey: queryKeys.brokerFeeFor(
 			broker,
 			quantity,
 			unitPrice,
 			instrumentType,
 			mic,
 			fxRate,
-		],
+		),
 		queryFn: async () => {
 			const res = await commands.brokerFeeHint(
 				broker,
