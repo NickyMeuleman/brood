@@ -1,4 +1,4 @@
-use crate::sync::yahoo::fetch_prices;
+use crate::sync::yahoo::{Error as YahooError, fetch_prices};
 use crate::{AppError, mic_timezone};
 use chrono::{Days, NaiveDate, Utc};
 use reqwest::Client;
@@ -183,7 +183,10 @@ pub async fn sync_one_listing(
 ) -> Result<usize, AppError> {
     let bars = fetch_prices(client, &task.ticker, &task.mic, task.from, task.to)
         .await
-        .map_err(|e| AppError::ExternalService(e.to_string()))?;
+        .map_err(|e| match e {
+            YahooError::UnknownMic(msg) => AppError::Internal(msg),
+            other => AppError::ExternalService(other.to_string()),
+        })?;
 
     if bars.is_empty() {
         return Ok(0);

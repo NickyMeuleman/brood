@@ -183,7 +183,7 @@ pub fn yahoo_suffix(mic: &str) -> Result<&'static str, YahooError> {
         // Australia
         "XASX" => Ok(".AX"),
 
-        other => Err(crate::sync::yahoo::Error::Parse(format!(
+        other => Err(crate::sync::yahoo::Error::UnknownMic(format!(
             "Unknown exchange MIC '{other}': add it to yahoo_suffix() before syncing"
         ))),
     }
@@ -242,7 +242,7 @@ pub fn mic_timezone(mic: &str) -> Result<Tz, YahooError> {
         // India
         "XBOM" | "XNSE" => Ok(Asia::Kolkata),
 
-        other => Err(YahooError::Parse(format!(
+        other => Err(YahooError::UnknownMic(format!(
             "Unknown exchange MIC '{other}': add it to mic_timezone() before syncing"
         ))),
     }

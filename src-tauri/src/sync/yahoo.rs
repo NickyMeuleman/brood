@@ -23,6 +23,9 @@ pub enum Error {
         from: NaiveDate,
         to: NaiveDate,
     },
+
+    #[error("Unknown exchange configuration: {0}")]
+    UnknownMic(String),
 }
 
 #[derive(Debug, Clone)]
