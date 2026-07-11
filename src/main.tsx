@@ -9,7 +9,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Period, TotalsEUR } from "./bindings";
 
 const router = createRouter({ routeTree });
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			// primarily local app. Queries that warrant retries should set them at call-site
+			retry: false,
+		},
+	},
+});
 
 declare module "@tanstack/react-router" {
 	interface Register {

@@ -19,7 +19,7 @@ const optionalDecimal = z
 	);
 
 export const buySchema = z.object({
-	listing_id: z.int().positive(),
+	listing_id: z.int().positive("Choose a listing"),
 	quantity: positiveDecimal,
 	executed_at: z.iso.datetime(),
 	unit_price: positiveDecimal,
@@ -37,7 +37,7 @@ export const buyFormOpts = formOptions({
 		executed_at: new Date().toISOString(),
 	},
 	validators: {
-    // validate on mount or canSubmit starts as true
+		// validate on mount or canSubmit starts as true
 		onMount: buySchema,
 		onChange: buySchema,
 	},

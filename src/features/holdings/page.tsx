@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useMemo } from "react";
+import { QueryError } from "@/components/QueryError.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { getErrorMessage } from "@/lib/errors.ts";
 import { queryKeys } from "@/lib/queryKeys.ts";
 import {
@@ -20,7 +22,7 @@ import { PortfolioChart } from "./PortfolioChart.tsx";
 const HoldingsPage = () => {
 	const { includeFees, displayInEur, period } = useUIStore();
 
-	const { data } = useQuery({
+	const { data, isLoading, error } = useQuery({
 		queryKey: queryKeys.holdingsByPeriod(period),
 		queryFn: async () => {
 			const res = await commands.getHoldings(period);
@@ -37,23 +39,45 @@ const HoldingsPage = () => {
 		[data?.holdings, includeFees, displayInEur],
 	);
 
-	const totalValue = Number(data?.totals.value ?? 0);
+	if (isLoading) {
+		return (
+			<div className="container mx-auto space-y-6 p-6">
+				<Skeleton className="h-48 w-full rounded-xl" />
+				<Skeleton className="h-64 w-full rounded-xl" />
+				<Skeleton className="h-96 w-full rounded-md" />
+			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<div className="container mx-auto p-6">
+				<QueryError message={error.message} />
+			</div>
+		);
+	}
+
+	if (!data) {
+		return null;
+	}
+
+	const totalValue = Number(data.totals.value);
 	const gain = includeFees
-		? Number(data?.totals.all_time.net.gain ?? 0)
-		: Number(data?.totals.all_time.gross.gain ?? 0);
+		? Number(data.totals.all_time.net.gain ?? 0)
+		: Number(data.totals.all_time.gross.gain ?? 0);
 	const periodGain = includeFees
-		? Number(data?.totals.period.net.gain ?? 0)
-		: Number(data?.totals.period.gross.gain ?? 0);
+		? Number(data.totals.period.net.gain ?? 0)
+		: Number(data.totals.period.gross.gain ?? 0);
 	const percentageGain = includeFees
-		? Number(data?.totals.all_time.net.pct_gain ?? 0)
-		: Number(data?.totals.all_time.gross.pct_gain ?? 0);
+		? Number(data.totals.all_time.net.pct_gain ?? 0)
+		: Number(data.totals.all_time.gross.pct_gain ?? 0);
 	const periodPercentageGain = includeFees
-		? Number(data?.totals.period.net.pct_gain ?? 0)
-		: Number(data?.totals.period.gross.pct_gain ?? 0);
-	const fees = Number(data?.totals.all_time.fees ?? 0);
-	const periodFees = Number(data?.totals.period.fees ?? 0);
-	const feeDrag = Number(data?.totals.all_time.fee_drag ?? 0);
-	const periodFeeDrag = Number(data?.totals.period.fee_drag ?? 0);
+		? Number(data.totals.period.net.pct_gain ?? 0)
+		: Number(data.totals.period.gross.pct_gain ?? 0);
+	const fees = Number(data.totals.all_time.fees ?? 0);
+	const periodFees = Number(data.totals.period.fees ?? 0);
+	const feeDrag = Number(data.totals.all_time.fee_drag ?? 0);
+	const periodFeeDrag = Number(data.totals.period.fee_drag ?? 0);
 
 	const isPositive = gain >= 0;
 	const isPeriodPositive = periodGain >= 0;
@@ -155,15 +179,11 @@ const HoldingsPage = () => {
 				</div>
 			</div>
 			<PortfolioChart />
-			{data ? (
-				<DataTable
-					columns={columns}
-					data={tableData}
-					meta={{ totals: data.totals, period }}
-				/>
-			) : (
-				"Loading"
-			)}
+			<DataTable
+				columns={columns}
+				data={tableData}
+				meta={{ totals: data.totals, period }}
+			/>
 		</div>
 	);
 };

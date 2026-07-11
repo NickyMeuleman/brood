@@ -1,5 +1,6 @@
 import { useStore } from "@tanstack/react-form";
 import { useCallback, useEffect } from "react";
+import { QueryError } from "@/components/QueryError";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
@@ -24,7 +25,11 @@ const BuyPage = () => {
 		formId: "buyform",
 	});
 
-	const { data: listings = [], isLoading: listingsLoading } = useListings();
+	const {
+		data: listings = [],
+		isLoading: listingsLoading,
+		error: listingsError,
+	} = useListings();
 
 	const listingId = useStore(f.store, (state) => state.values.listing_id);
 	const quantity = useStore(f.store, (state) => state.values.quantity);
@@ -35,7 +40,15 @@ const BuyPage = () => {
 
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
-	const { data: fxRate } = useFx(executedAt, listingCurrency || "EUR");
+	const isForeignCurrency = Boolean(
+		listingCurrency && listingCurrency !== "EUR",
+	);
+
+	const {
+		data: fxRate,
+		error: fxError,
+		isLoading: fxLoading,
+	} = useFx(executedAt, listingCurrency || "EUR");
 	const { data: priceHint } = usePrice(executedAt, listingId);
 	const tobHint = useTobHint(
 		quantity,
@@ -116,12 +129,25 @@ const BuyPage = () => {
 	}, [brokerFeeHint, brokerFeePristine, setBrokerFee]);
 
 	const base = Number(quantity) * Number(unitPrice);
-	const convertedBase = base * Number(fxRate || 1);
-	const total = convertedBase + Number(brokerFee) + Number(tobFee);
+
+	let convertedBase: number | null;
+	if (!isForeignCurrency) {
+		convertedBase = base;
+	} else if (fxRate) {
+		convertedBase = base * Number(fxRate);
+	} else {
+		convertedBase = null;
+	}
+
+	const total =
+		convertedBase !== null
+			? convertedBase + Number(brokerFee) + Number(tobFee)
+			: null;
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
 			<div className="space-y-6 lg:col-span-2">
+				{listingsError ? <QueryError message={listingsError.message} /> : null}
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
@@ -183,17 +209,14 @@ const BuyPage = () => {
 								{formatCurrency(base, listingCurrency)}
 							</span>
 						</div>
-
-						{listingCurrency && listingCurrency !== "EUR" && fxRate ? (
-							<div className="flex items-center justify-between gap-3 pl-4">
-								<span className="text-muted-foreground text-sm">
-									Converted to EUR
-								</span>
-								<span className="font-medium text-sm">
-									{formatCurrency(convertedBase)}
-								</span>
-							</div>
-						) : null}
+						{isForeignCurrency && (
+							<FxRatePreview
+								isLoading={fxLoading}
+								error={fxError}
+								rate={fxRate}
+								convertedValue={convertedBase}
+							/>
+						)}
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">
 								Broker fee
@@ -215,7 +238,7 @@ const BuyPage = () => {
 					<div className="flex items-center justify-between gap-3">
 						<span className="font-semibold text-xl">Total</span>
 						<span className="font-semibold text-xl">
-							{formatCurrency(total)}
+							{total === null ? "-" : formatCurrency(total)}
 						</span>
 					</div>
 				</div>
@@ -223,5 +246,42 @@ const BuyPage = () => {
 		</div>
 	);
 };
+
+function FxRatePreview({
+	isLoading,
+	error,
+	rate,
+	convertedValue,
+}: {
+	isLoading: boolean;
+	error: Error | null;
+	rate: string | undefined;
+	convertedValue: number | null;
+}) {
+	if (isLoading) {
+		return (
+			<p className="pl-4 text-muted-foreground text-xs">
+				Loading exchange rate…
+			</p>
+		);
+	}
+
+	if (error) {
+		return <p className="pl-4 text-destructive text-xs">{error.message}</p>;
+	}
+
+	if (!rate || convertedValue === null) {
+		return null;
+	}
+
+	return (
+		<div className="flex items-center justify-between gap-3 pl-4">
+			<span className="text-muted-foreground text-sm">Converted to EUR</span>
+			<span className="font-medium text-sm">
+				{formatCurrency(convertedValue)}
+			</span>
+		</div>
+	);
+}
 
 export default BuyPage;

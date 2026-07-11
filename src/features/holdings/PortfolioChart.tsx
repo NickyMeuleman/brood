@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { commands, type Period } from "@/bindings";
+import { QueryError } from "@/components/QueryError";
 import { Card, CardContent } from "@/components/ui/card";
 import {
 	type ChartConfig,
@@ -52,7 +53,7 @@ export function PortfolioChart() {
 	const { period, includeFees } = useUIStore();
 	const formatters = useDateFormatters();
 
-	const { data, isLoading } = useQuery({
+	const { data, isLoading, error } = useQuery({
 		queryKey: queryKeys.portfolioHistoryByPeriod(period),
 		queryFn: async () => {
 			const res = await commands.getPortfolioHistory(period);
@@ -105,6 +106,10 @@ export function PortfolioChart() {
 
 	if (isLoading) {
 		return <Skeleton className="h-64 w-full rounded-xl" />;
+	}
+
+	if (error) {
+		return <QueryError message={error.message} />;
 	}
 
 	return (
