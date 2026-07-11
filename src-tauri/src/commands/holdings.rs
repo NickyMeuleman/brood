@@ -350,7 +350,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
 
     for (listing_id, h) in holdings.iter_mut() {
         h.unit_price = latest_prices.get(listing_id).copied().ok_or_else(|| {
-            AppError::MissingData(format!("Missing current price for listing_id {listing_id}"))
+            AppError::MissingData(format!("Missing current price for listing_id: {listing_id} (ticker: {})", h.ticker))
         })?;
         h.period_start_unit_price = period_start_prices.get(listing_id).copied();
     }

@@ -355,7 +355,7 @@ pub async fn get_rate(
 
     let rate = row
         .ok_or_else(|| {
-            AppError::Database(format!(
+            AppError::MissingData(format!(
                 "No FX rate for {currency_code} on or before {date}"
             ))
         })?
@@ -391,7 +391,7 @@ pub async fn get_price(
 
     let close = row
         .ok_or_else(|| {
-            AppError::Database(format!(
+            AppError::MissingData(format!(
                 "No price for listing {listing_id} on or before {date}"
             ))
         })?
