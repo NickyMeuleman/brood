@@ -33,6 +33,11 @@ const navData: NavItem[] = [
 			{ title: "Sell", to: "/trade/sell" },
 		],
 	},
+	{
+		title: "Listing",
+		to: "/listings",
+		items: [{ title: "Add", to: "/listings/add" }],
+	},
 	{ title: "Admin", to: "/admin" },
 ];
 

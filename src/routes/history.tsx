@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import Page from "@/features/chart/page.tsx";
 
 export const Route = createFileRoute("/history")({
 	component: RouteComponent,
@@ -7,5 +6,5 @@ export const Route = createFileRoute("/history")({
 });
 
 function RouteComponent() {
-	return <Page />;
+	return <div>history</div>;
 }

@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as TradeRouteRouteImport } from './routes/trade/route'
+import { Route as ListingsRouteRouteImport } from './routes/listings/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TradeIndexRouteImport } from './routes/trade/index'
+import { Route as ListingsIndexRouteImport } from './routes/listings/index'
 import { Route as TradeSellRouteImport } from './routes/trade/sell'
 import { Route as TradeBuyRouteImport } from './routes/trade/buy'
+import { Route as ListingsAddRouteImport } from './routes/listings/add'
 
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
@@ -32,6 +35,11 @@ const TradeRouteRoute = TradeRouteRouteImport.update({
   path: '/trade',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ListingsRouteRoute = ListingsRouteRouteImport.update({
+  id: '/listings',
+  path: '/listings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -41,6 +49,11 @@ const TradeIndexRoute = TradeIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => TradeRouteRoute,
+} as any)
+const ListingsIndexRoute = ListingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ListingsRouteRoute,
 } as any)
 const TradeSellRoute = TradeSellRouteImport.update({
   id: '/sell',
@@ -52,59 +65,87 @@ const TradeBuyRoute = TradeBuyRouteImport.update({
   path: '/buy',
   getParentRoute: () => TradeRouteRoute,
 } as any)
+const ListingsAddRoute = ListingsAddRouteImport.update({
+  id: '/add',
+  path: '/add',
+  getParentRoute: () => ListingsRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/listings': typeof ListingsRouteRouteWithChildren
   '/trade': typeof TradeRouteRouteWithChildren
   '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
+  '/listings/add': typeof ListingsAddRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
+  '/listings/': typeof ListingsIndexRoute
   '/trade/': typeof TradeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
+  '/listings/add': typeof ListingsAddRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
+  '/listings': typeof ListingsIndexRoute
   '/trade': typeof TradeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/listings': typeof ListingsRouteRouteWithChildren
   '/trade': typeof TradeRouteRouteWithChildren
   '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
+  '/listings/add': typeof ListingsAddRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/sell': typeof TradeSellRoute
+  '/listings/': typeof ListingsIndexRoute
   '/trade/': typeof TradeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/listings'
     | '/trade'
     | '/admin'
     | '/history'
+    | '/listings/add'
     | '/trade/buy'
     | '/trade/sell'
+    | '/listings/'
     | '/trade/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/history' | '/trade/buy' | '/trade/sell' | '/trade'
+  to:
+    | '/'
+    | '/admin'
+    | '/history'
+    | '/listings/add'
+    | '/trade/buy'
+    | '/trade/sell'
+    | '/listings'
+    | '/trade'
   id:
     | '__root__'
     | '/'
+    | '/listings'
     | '/trade'
     | '/admin'
     | '/history'
+    | '/listings/add'
     | '/trade/buy'
     | '/trade/sell'
+    | '/listings/'
     | '/trade/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ListingsRouteRoute: typeof ListingsRouteRouteWithChildren
   TradeRouteRoute: typeof TradeRouteRouteWithChildren
   AdminRoute: typeof AdminRoute
   HistoryRoute: typeof HistoryRoute
@@ -133,6 +174,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TradeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/listings': {
+      id: '/listings'
+      path: '/listings'
+      fullPath: '/listings'
+      preLoaderRoute: typeof ListingsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -146,6 +194,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/trade/'
       preLoaderRoute: typeof TradeIndexRouteImport
       parentRoute: typeof TradeRouteRoute
+    }
+    '/listings/': {
+      id: '/listings/'
+      path: '/'
+      fullPath: '/listings/'
+      preLoaderRoute: typeof ListingsIndexRouteImport
+      parentRoute: typeof ListingsRouteRoute
     }
     '/trade/sell': {
       id: '/trade/sell'
@@ -161,8 +216,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TradeBuyRouteImport
       parentRoute: typeof TradeRouteRoute
     }
+    '/listings/add': {
+      id: '/listings/add'
+      path: '/add'
+      fullPath: '/listings/add'
+      preLoaderRoute: typeof ListingsAddRouteImport
+      parentRoute: typeof ListingsRouteRoute
+    }
   }
 }
+
+interface ListingsRouteRouteChildren {
+  ListingsAddRoute: typeof ListingsAddRoute
+  ListingsIndexRoute: typeof ListingsIndexRoute
+}
+
+const ListingsRouteRouteChildren: ListingsRouteRouteChildren = {
+  ListingsAddRoute: ListingsAddRoute,
+  ListingsIndexRoute: ListingsIndexRoute,
+}
+
+const ListingsRouteRouteWithChildren = ListingsRouteRoute._addFileChildren(
+  ListingsRouteRouteChildren,
+)
 
 interface TradeRouteRouteChildren {
   TradeBuyRoute: typeof TradeBuyRoute
@@ -182,6 +258,7 @@ const TradeRouteRouteWithChildren = TradeRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ListingsRouteRoute: ListingsRouteRouteWithChildren,
   TradeRouteRoute: TradeRouteRouteWithChildren,
   AdminRoute: AdminRoute,
   HistoryRoute: HistoryRoute,
