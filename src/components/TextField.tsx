@@ -7,14 +7,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { useFieldContext } from "@/hooks/form-context";
 
-export const TextField = ({ label }: { label: string }) => {
+export const TextField = ({
+	label,
+	description,
+}: {
+	label: string;
+	description: string;
+}) => {
 	const field = useFieldContext<string>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 
 	return (
 		<Field data-invalid={isInvalid}>
 			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-			<FieldDescription>Your name goes in this field</FieldDescription>
+			<FieldDescription>{description}</FieldDescription>
 			<Input
 				id={field.name}
 				name={field.name}

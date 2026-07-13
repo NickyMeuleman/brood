@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Page from "@/features/listings/add.tsx";
 
 export const Route = createFileRoute("/listings/add")({
 	component: RouteComponent,
@@ -6,5 +7,5 @@ export const Route = createFileRoute("/listings/add")({
 });
 
 function RouteComponent() {
-	return <div>Hello "/listing/add"!</div>;
+	return <Page />;
 }
