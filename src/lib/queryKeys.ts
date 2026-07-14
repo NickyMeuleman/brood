@@ -31,4 +31,5 @@ export const queryKeys = {
 			mic,
 			fxRate,
 		] as const,
+	supportedMics: ["supportedMics"] as const,
 };

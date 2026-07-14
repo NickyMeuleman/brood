@@ -1,9 +1,11 @@
 pub mod chart;
 pub mod holdings;
+pub mod instruments;
 pub mod lot_data;
 pub mod sync;
 pub mod trade;
 
+use crate::SUPPORTED_EXCHANGES;
 use crate::{AppError, db::Db, parse_decimal_internal};
 use chrono::{DateTime, Datelike, Days, Months, NaiveDate, Utc};
 use rust_decimal::Decimal;
@@ -398,4 +400,13 @@ pub async fn get_price(
         .close;
 
     parse_decimal_internal(&close, "price_history close")
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_mics() -> Vec<String> {
+    SUPPORTED_EXCHANGES
+        .iter()
+        .map(|e| e.mic.to_string())
+        .collect()
 }

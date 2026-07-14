@@ -41,11 +41,13 @@ function isValidLuhn(isin: string): boolean {
 
 export const listingAddSchema = z.object({
 	isin: isinValidator,
+	exchange: z.string().uppercase(),
 });
 
 export const listingAddFormOpts = formOptions({
 	defaultValues: {
 		isin: "",
+		exchange: "",
 	},
 	validators: {
 		// validate on mount or canSubmit starts as true

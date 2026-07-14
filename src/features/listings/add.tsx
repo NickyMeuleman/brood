@@ -4,6 +4,7 @@ import {
 	listingAddSchema,
 } from "@/features/listings/shared-form";
 import { useAppForm } from "@/hooks/form";
+import { useMics } from "@/hooks/use-mics";
 
 const ListingAddPage = () => {
 	const f = useAppForm({
@@ -14,6 +15,8 @@ const ListingAddPage = () => {
 		},
 		formId: "listing_add_form",
 	});
+
+	const { data: mics } = useMics();
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
@@ -31,6 +34,11 @@ const ListingAddPage = () => {
 									label="ISIN (International Securities Identification Number)"
 									description="Unique instrument identification"
 								/>
+							)}
+						</f.AppField>
+						<f.AppField name="exchange">
+							{(field) => (
+								<field.ExchangePicker label="Exchange" exchanges={mics ?? []} />
 							)}
 						</f.AppField>
 						<f.AppForm>

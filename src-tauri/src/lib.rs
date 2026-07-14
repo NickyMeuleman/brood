@@ -7,7 +7,7 @@ mod commands;
 mod db;
 mod sync;
 
-use chrono_tz::Tz;
+use chrono_tz::{America, Asia, Australia, Europe, Tz};
 use commands::chart::get_portfolio_history;
 use commands::holdings::get_holdings;
 use commands::sync::{
@@ -15,7 +15,7 @@ use commands::sync::{
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
 };
 use commands::trade::{broker_fee_hint, buy, get_listings, import_buy_csv};
-use commands::{get_price, get_rate};
+use commands::{get_mics, get_price, get_rate};
 use db::init_db;
 use reqwest;
 use rust_decimal::Decimal;
@@ -101,7 +101,8 @@ pub fn run() {
         import_buy_csv,
         get_rate,
         get_price,
-        broker_fee_hint
+        broker_fee_hint,
+        get_mics
     ]);
 
     #[cfg(debug_assertions)]
@@ -139,113 +140,183 @@ pub fn run() {
         .expect("Error while running tauri application");
 }
 
+pub struct ExchangeInfo {
+    pub mic: &'static str,
+    pub yahoo_suffix: &'static str,
+    pub tz: Tz,
+}
+
+pub const SUPPORTED_EXCHANGES: &[ExchangeInfo] = &[
+    // United States (no suffix)
+    ExchangeInfo {
+        mic: "XNAS",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "XNYS",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "NYSE",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "ARCX",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "XASE",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "XPHL",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "XBOS",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    ExchangeInfo {
+        mic: "IEXG",
+        yahoo_suffix: "",
+        tz: America::New_York,
+    },
+    // Canada
+    ExchangeInfo {
+        mic: "XTSE",
+        yahoo_suffix: ".TO",
+        tz: America::Toronto,
+    },
+    ExchangeInfo {
+        mic: "XTSX",
+        yahoo_suffix: ".V",
+        tz: America::Toronto,
+    },
+    // United Kingdom
+    ExchangeInfo {
+        mic: "XLON",
+        yahoo_suffix: ".L",
+        tz: Europe::London,
+    },
+    // Euronext
+    ExchangeInfo {
+        mic: "XAMS",
+        yahoo_suffix: ".AS",
+        tz: Europe::Amsterdam,
+    },
+    ExchangeInfo {
+        mic: "XPAR",
+        yahoo_suffix: ".PA",
+        tz: Europe::Paris,
+    },
+    ExchangeInfo {
+        mic: "XBRU",
+        yahoo_suffix: ".BR",
+        tz: Europe::Brussels,
+    },
+    ExchangeInfo {
+        mic: "XLIS",
+        yahoo_suffix: ".LS",
+        tz: Europe::Lisbon,
+    },
+    // Germany
+    ExchangeInfo {
+        mic: "XETR",
+        yahoo_suffix: ".DE",
+        tz: Europe::Berlin,
+    },
+    ExchangeInfo {
+        mic: "XFRA",
+        yahoo_suffix: ".F",
+        tz: Europe::Berlin,
+    },
+    ExchangeInfo {
+        mic: "XSTU",
+        yahoo_suffix: ".SG",
+        tz: Europe::Berlin,
+    },
+    // Switzerland
+    ExchangeInfo {
+        mic: "XSWX",
+        yahoo_suffix: ".SW",
+        tz: Europe::Zurich,
+    },
+    // Italy
+    ExchangeInfo {
+        mic: "XMIL",
+        yahoo_suffix: ".MI",
+        tz: Europe::Rome,
+    },
+    // Nordics
+    ExchangeInfo {
+        mic: "XSTO",
+        yahoo_suffix: ".ST",
+        tz: Europe::Stockholm,
+    },
+    ExchangeInfo {
+        mic: "XCSE",
+        yahoo_suffix: ".CO",
+        tz: Europe::Copenhagen,
+    },
+    ExchangeInfo {
+        mic: "XHEL",
+        yahoo_suffix: ".HE",
+        tz: Europe::Helsinki,
+    },
+    ExchangeInfo {
+        mic: "XOSL",
+        yahoo_suffix: ".OL",
+        tz: Europe::Oslo,
+    },
+    // Japan
+    ExchangeInfo {
+        mic: "XTKS",
+        yahoo_suffix: ".T",
+        tz: Asia::Tokyo,
+    },
+    // Hong Kong
+    ExchangeInfo {
+        mic: "XHKG",
+        yahoo_suffix: ".HK",
+        tz: Asia::Hong_Kong,
+    },
+    // Australia
+    ExchangeInfo {
+        mic: "XASX",
+        yahoo_suffix: ".AX",
+        tz: Australia::Sydney,
+    },
+];
+
 pub fn yahoo_suffix(mic: &str) -> Result<&'static str, YahooError> {
-    match mic {
-        // United States (no suffix)
-        "XNAS" | "XNYS" | "NYSE" | "ARCX" | "XASE" | "XPHL" | "XBOS" | "IEXG" => Ok(""),
-
-        // Canada
-        "XTSE" => Ok(".TO"),
-        "XTSX" => Ok(".V"),
-
-        // United Kingdom
-        "XLON" => Ok(".L"),
-
-        // Euronext
-        "XAMS" => Ok(".AS"),
-        "XPAR" => Ok(".PA"),
-        "XBRU" => Ok(".BR"),
-        "XLIS" => Ok(".LS"),
-
-        // Germany
-        "XETR" => Ok(".DE"),
-        "XFRA" => Ok(".F"),
-        "XSTU" => Ok(".SG"),
-
-        // Switzerland
-        "XSWX" => Ok(".SW"),
-
-        // Italy
-        "XMIL" => Ok(".MI"),
-
-        // Nordics
-        "XSTO" => Ok(".ST"),
-        "XCSE" => Ok(".CO"),
-        "XHEL" => Ok(".HE"),
-        "XOSL" => Ok(".OL"),
-
-        // Japan
-        "XTKS" => Ok(".T"),
-
-        // Hong Kong
-        "XHKG" => Ok(".HK"),
-
-        // Australia
-        "XASX" => Ok(".AX"),
-
-        other => Err(crate::sync::yahoo::Error::UnknownMic(format!(
-            "Unknown exchange MIC '{other}': add it to yahoo_suffix() before syncing"
-        ))),
-    }
+    SUPPORTED_EXCHANGES
+        .iter()
+        .find(|e| e.mic == mic)
+        .map(|e| e.yahoo_suffix)
+        .ok_or_else(|| {
+            crate::sync::yahoo::Error::UnknownMic(format!(
+                "Unknown exchange MIC '{mic}': add it to SUPPORTED_EXCHANGES before syncing"
+            ))
+        })
 }
 
 pub fn mic_timezone(mic: &str) -> Result<Tz, YahooError> {
-    use chrono_tz::{America, Asia, Australia, Europe};
-
-    match mic {
-        // United States (mostly Eastern Time)
-        "XNAS" | "XNYS" | "NYSE" | "ARCX" | "XASE" | "XPHL" | "XBOS" | "IEXG" => {
-            Ok(America::New_York)
-        }
-        "XCHI" | "XCBO" => Ok(America::Chicago),
-
-        // Canada
-        "XTSE" | "XTSX" | "XMOD" => Ok(America::Toronto),
-
-        // United Kingdom
-        "XLON" | "XOFF" => Ok(Europe::London),
-
-        // Euronext
-        "XAMS" => Ok(Europe::Amsterdam),
-        "XPAR" => Ok(Europe::Paris),
-        "XBRU" => Ok(Europe::Brussels),
-        "XLIS" => Ok(Europe::Lisbon),
-        "XDUB" => Ok(Europe::Dublin),
-
-        // Germany
-        "XETR" | "XFRA" | "XSTU" => Ok(Europe::Berlin),
-
-        // Switzerland
-        "XSWX" => Ok(Europe::Zurich),
-
-        // Italy
-        "XMIL" => Ok(Europe::Rome),
-
-        // Nordics
-        "XSTO" => Ok(Europe::Stockholm),
-        "XCSE" => Ok(Europe::Copenhagen),
-        "XHEL" => Ok(Europe::Helsinki),
-        "XOSL" => Ok(Europe::Oslo),
-
-        // Japan
-        "XTKS" | "XOSJ" => Ok(Asia::Tokyo),
-
-        // Hong Kong
-        "XHKG" => Ok(Asia::Hong_Kong),
-
-        // China
-        "XSHG" | "XSHE" => Ok(Asia::Shanghai),
-
-        // Australia
-        "XASX" => Ok(Australia::Sydney),
-
-        // India
-        "XBOM" | "XNSE" => Ok(Asia::Kolkata),
-
-        other => Err(YahooError::UnknownMic(format!(
-            "Unknown exchange MIC '{other}': add it to mic_timezone() before syncing"
-        ))),
-    }
+    SUPPORTED_EXCHANGES
+        .iter()
+        .find(|e| e.mic == mic)
+        .map(|e| e.tz)
+        .ok_or_else(|| {
+            crate::sync::yahoo::Error::UnknownMic(format!(
+                "Unknown exchange MIC '{mic}': add it to SUPPORTED_EXCHANGES before syncing"
+            ))
+        })
 }
 
 // EEA domicile codes used to determine the 0.12% accumulating rate.
