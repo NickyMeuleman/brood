@@ -5,11 +5,13 @@
 
 mod commands;
 mod db;
+mod isin;
 mod sync;
 
 use chrono_tz::{America, Asia, Australia, Europe, Tz};
 use commands::chart::get_portfolio_history;
 use commands::holdings::get_holdings;
+use commands::instruments::find_instrument_by_isin;
 use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
@@ -102,7 +104,8 @@ pub fn run() {
         get_rate,
         get_price,
         broker_fee_hint,
-        get_mics
+        get_mics,
+        find_instrument_by_isin
     ]);
 
     #[cfg(debug_assertions)]

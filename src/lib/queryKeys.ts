@@ -32,4 +32,6 @@ export const queryKeys = {
 			fxRate,
 		] as const,
 	supportedMics: ["supportedMics"] as const,
+	instruments: ["instruments"] as const,
+	instrumentByIsin: (isin: string) => ["instrument", isin] as const,
 };

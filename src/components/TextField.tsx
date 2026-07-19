@@ -12,7 +12,7 @@ export const TextField = ({
 	description,
 }: {
 	label: string;
-	description: string;
+	description?: string;
 }) => {
 	const field = useFieldContext<string>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
@@ -20,7 +20,7 @@ export const TextField = ({
 	return (
 		<Field data-invalid={isInvalid}>
 			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-			<FieldDescription>{description}</FieldDescription>
+			{description ? <FieldDescription>{description}</FieldDescription> : null}
 			<Input
 				id={field.name}
 				name={field.name}

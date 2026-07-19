@@ -19,7 +19,7 @@ pub enum InstrumentType {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, Deserialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Replication {

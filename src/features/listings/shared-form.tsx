@@ -1,5 +1,6 @@
 import { formOptions } from "@tanstack/react-form";
 import { z } from "zod";
+import type { InstrumentType, Replication } from "@/bindings";
 
 const isinValidator = z
 	.string()
@@ -39,15 +40,63 @@ function isValidLuhn(isin: string): boolean {
 	return sum % 10 === 0;
 }
 
+export function isValidIsin(isin: string): boolean {
+	return isinValidator.safeParse(isin).success;
+}
+
+export const INSTRUMENT_TYPES: InstrumentType[] = [
+	"ETF",
+	"FUND",
+	"STOCK",
+	"BOND",
+	"OTHER",
+];
+export const REPLICATIONS: Replication[] = ["PHYSICAL", "SYNTHETIC"];
+
+const instrumentFieldsSchema = z.object({
+	name: z.string().trim().min(1, "Required"),
+	issuer: z.string().trim(),
+	instrument_type: z.enum(INSTRUMENT_TYPES),
+	replication: z
+		.enum(REPLICATIONS)
+		.or(z.literal(""))
+		.transform((v) => (v === "" ? null : v)),
+	fsma_registered: z.boolean(),
+	accumulating: z.boolean(),
+	domicile: z.string().trim(),
+	subject_to_cgt: z.boolean(),
+});
+
+const listingFieldsSchema = z.object({
+	ticker: z.string().uppercase().min(1, "Required"),
+	mic: z.string().uppercase().min(1, "Choose an exchange"),
+	currency: z.string().uppercase().min(1, "Required"),
+});
+
 export const listingAddSchema = z.object({
 	isin: isinValidator,
-	exchange: z.string().uppercase(),
+	instrument: instrumentFieldsSchema,
+	listing: listingFieldsSchema,
 });
 
 export const listingAddFormOpts = formOptions({
 	defaultValues: {
 		isin: "",
-		exchange: "",
+		instrument: {
+			name: "",
+			issuer: "",
+			instrument_type: "",
+			replication: "",
+			fsma_registered: false,
+			accumulating: false,
+			domicile: "",
+			subject_to_cgt: true,
+		},
+		listing: {
+			mic: "",
+			ticker: "",
+			currency: "",
+		},
 	},
 	validators: {
 		// validate on mount or canSubmit starts as true
