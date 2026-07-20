@@ -11,9 +11,11 @@ import { useFieldContext } from "@/hooks/form-context";
 export const SwitchField = ({
 	label,
 	description,
+	disabled,
 }: {
 	label: string;
 	description?: ReactNode;
+	disabled?: boolean;
 }) => {
 	const field = useFieldContext<boolean>();
 
@@ -23,6 +25,7 @@ export const SwitchField = ({
 				id={field.name}
 				checked={field.state.value}
 				onCheckedChange={(v) => field.handleChange(v)}
+				disabled={disabled}
 			/>
 			<FieldContent>
 				<FieldLabel htmlFor={field.name}>{label}</FieldLabel>

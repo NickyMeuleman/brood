@@ -1,5 +1,6 @@
 import {
 	Field,
+	FieldContent,
 	FieldDescription,
 	FieldError,
 	FieldLabel,
@@ -19,8 +20,12 @@ export const TextField = ({
 
 	return (
 		<Field data-invalid={isInvalid}>
-			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-			{description ? <FieldDescription>{description}</FieldDescription> : null}
+			<FieldContent>
+				<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
+				{description ? (
+					<FieldDescription>{description}</FieldDescription>
+				) : null}
+			</FieldContent>
 			<Input
 				id={field.name}
 				name={field.name}

@@ -1,9 +1,11 @@
 import { useStore } from "@tanstack/react-form";
+import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
-	FieldDescription,
 	FieldGroup,
 	FieldLegend,
+	FieldSeparator,
 	FieldSet,
 } from "@/components/ui/field";
 import {
@@ -56,8 +58,8 @@ const ListingAddPage = () => {
 	}, [instrumentLookup, setInstrument]);
 
 	return (
-		<div className="m-auto mt-6 grid max-w-10/12">
-			<div className="space-y-6 lg:col-span-2">
+		<div className="m-auto mt-8 max-w-4xl p-4">
+			<div className="space-y-6">
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
@@ -65,113 +67,153 @@ const ListingAddPage = () => {
 					}}
 				>
 					<FieldGroup>
-						<f.AppField name="isin">
-							{(field) => (
-								<field.TextField
-									label="ISIN (International Securities Identification Number)"
-									description="Unique instrument identification"
-								/>
-							)}
-						</f.AppField>
-						<FieldSet disabled={!isInstrumentEditable}>
-							<FieldLegend>Instrument</FieldLegend>
-							<FieldDescription>Details for this instrument</FieldDescription>
-							<f.AppField name="instrument.name">
-								{(field) => (
-									<field.TextField label="Name" description="Long name" />
-								)}
-							</f.AppField>
-							<f.AppField name="instrument.issuer">
+						<FieldGroup>
+							<f.AppField name="isin">
 								{(field) => (
 									<field.TextField
-										label="Issuer"
-										description="Issuing company"
+										label="ISIN"
+										description="International Securities Identification Number"
 									/>
 								)}
 							</f.AppField>
-							<f.AppField name="instrument.instrument_type">
-								{(field) => (
-									<field.SelectField
-										label="Type"
-										options={INSTRUMENT_TYPES.map((v) => ({
-											value: v,
-											label: v.toLowerCase(),
-										}))}
-										placeholder="Type of instrument"
-									/>
-								)}
-							</f.AppField>
-							<f.AppField name="instrument.replication">
-								{(field) => (
-									<field.SelectField
-										label="Replication"
-										options={REPLICATIONS.map((v) => ({
-											value: v,
-											label: v.toLowerCase(),
-										}))}
-										placeholder="Replication method"
-									/>
-								)}
-							</f.AppField>
-							<f.AppField name="instrument.fsma_registered">
-								{(field) => (
-									<field.SwitchField
-										label="FSMA Registered"
-										description={
-											<>
-												Look up registration status on the{" "}
-												<a
-													href="https://www.fsma.be/nl/data-portal"
-													target="_blank"
-													rel="noopener"
-												>
-													FSMA data portal
-												</a>
-											</>
-										}
-									/>
-								)}
-							</f.AppField>
-							<f.AppField name="instrument.accumulating">
-								{(field) => <field.SwitchField label="Accumulating" />}
-							</f.AppField>
-							<f.AppField name="instrument.domicile">
-								{(field) => <field.TextField label="Domicile" />}
-							</f.AppField>
-							<f.AppField name="instrument.subject_to_cgt">
-								{(field) => (
-									<field.SwitchField
-										label="Capital gains tax"
-										description={
-											<>
-												Some products are exempt.{" "}
-												<a
-													href="https://fin.belgium.be/nl/particulieren/belastingaangifte/inkomsten/meerwaardebelasting#wat-zijn-financiele-activa"
-													target="_blank"
-													rel="noopener"
-												>
-													source: FOD Financien
-												</a>
-											</>
-										}
-									/>
-								)}
-							</f.AppField>
+						</FieldGroup>
+
+						<FieldSeparator />
+
+						<FieldSet
+							disabled={!isInstrumentEditable}
+							aria-disabled={!isInstrumentEditable}
+						>
+							<FieldLegend className="mb-6 flex items-center justify-between font-bold">
+								Instrument Details
+								{instrumentLookup && !isInstrumentEditable ? (
+									<Button
+										type="button"
+										size="sm"
+										onClick={() => setIsEditingInstrument(true)}
+									>
+										<Pencil className="h-3.5 w-3.5" data-icon="inline-start" />
+										Enable Editing
+									</Button>
+								) : null}
+							</FieldLegend>
+							<FieldGroup className="grid gap-6 md:grid-cols-2">
+								<div className="col-span-full">
+									<f.AppField name="instrument.name">
+										{(field) => <field.TextField label="Name" />}
+									</f.AppField>
+								</div>
+
+								<f.AppField name="instrument.issuer">
+									{(field) => <field.TextField label="Issuer" />}
+								</f.AppField>
+								<f.AppField name="instrument.domicile">
+									{(field) => <field.TextField label="Domicile" />}
+								</f.AppField>
+								<f.AppField name="instrument.instrument_type">
+									{(field) => (
+										<field.SelectField
+											label="Type"
+											options={INSTRUMENT_TYPES.map((v) => ({
+												value: v,
+												label: v,
+											}))}
+											placeholder="Type of instrument"
+										/>
+									)}
+								</f.AppField>
+								<f.AppField name="instrument.replication">
+									{(field) => (
+										<field.SelectField
+											label="Replication"
+											options={REPLICATIONS.map((v) => ({
+												value: v,
+												label: v.toLowerCase(),
+											}))}
+											placeholder="Replication method"
+										/>
+									)}
+								</f.AppField>
+
+								<FieldGroup className="col-span-full">
+									<f.AppField name="instrument.fsma_registered">
+										{(field) => (
+											<field.SwitchField
+												label="FSMA Registered"
+												disabled={!isInstrumentEditable}
+												description={
+													<>
+														Look up registration status on the{" "}
+														<a
+															href="https://www.fsma.be/nl/data-portal"
+															target="_blank"
+															rel="noopener"
+														>
+															FSMA data portal
+														</a>
+													</>
+												}
+											/>
+										)}
+									</f.AppField>
+									<f.AppField name="instrument.accumulating">
+										{(field) => (
+											<field.SwitchField
+												label="Accumulating"
+												disabled={!isInstrumentEditable}
+											/>
+										)}
+									</f.AppField>
+									<f.AppField name="instrument.subject_to_cgt">
+										{(field) => (
+											<field.SwitchField
+												label="Capital gains tax"
+												disabled={!isInstrumentEditable}
+												description={
+													<>
+														Some products are exempt.{" "}
+														<a
+															href="https://fin.belgium.be/nl/particulieren/belastingaangifte/inkomsten/meerwaardebelasting#wat-zijn-financiele-activa"
+															target="_blank"
+															rel="noopener"
+														>
+															source: FOD Financien
+														</a>
+													</>
+												}
+											/>
+										)}
+									</f.AppField>
+								</FieldGroup>
+							</FieldGroup>
 						</FieldSet>
-						<f.AppField name="listing.mic">
-							{(field) => (
-								<field.ExchangePicker label="Exchange" exchanges={mics} />
-							)}
-						</f.AppField>
-						<f.AppField name="listing.ticker">
-							{(field) => <field.TextField label="Ticker" />}
-						</f.AppField>
-						<f.AppField name="listing.currency">
-							{(field) => <field.TextField label="Currency" />}
-						</f.AppField>
-						<f.AppForm>
-							<f.SubmitButton label="Submit" />
-						</f.AppForm>
+
+						<FieldSeparator />
+
+						<FieldSet>
+							<FieldLegend className="mb-6 font-bold">
+								Listing Details
+							</FieldLegend>
+							<FieldGroup className="grid gap-6 md:grid-cols-3">
+								<f.AppField name="listing.mic">
+									{(field) => (
+										<field.ExchangePicker label="Exchange" exchanges={mics} />
+									)}
+								</f.AppField>
+								<f.AppField name="listing.ticker">
+									{(field) => <field.TextField label="Ticker" />}
+								</f.AppField>
+								<f.AppField name="listing.currency">
+									{(field) => <field.TextField label="Currency" />}
+								</f.AppField>
+							</FieldGroup>
+						</FieldSet>
+
+						<FieldGroup>
+							<f.AppForm>
+								<f.SubmitButton label="Submit" />
+							</f.AppForm>
+						</FieldGroup>
 					</FieldGroup>
 				</form>
 			</div>
