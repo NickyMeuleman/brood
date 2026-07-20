@@ -194,7 +194,7 @@ const ListingAddPage = () => {
 							<FieldLegend className="mb-6 font-bold">
 								Listing Details
 							</FieldLegend>
-							<FieldGroup className="grid gap-6 md:grid-cols-3">
+							<FieldGroup className="grid items-start gap-6 md:grid-cols-3">
 								<f.AppField name="listing.mic">
 									{(field) => (
 										<field.ExchangePicker label="Exchange" exchanges={mics} />
