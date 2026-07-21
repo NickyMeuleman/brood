@@ -1,12 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { useMemo, useRef } from "react";
-import {
-	commands,
-	type FXSyncOutcome,
-	type ImportRowOutcome,
-	type PriceSyncOutcome,
+import type {
+	FXSyncOutcome,
+	ImportRowOutcome,
+	PriceSyncOutcome,
 } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +14,7 @@ import {
 	useForceUpdateOneListingPrices,
 } from "@/hooks/use-force-sync";
 import { useImportBuyCSV } from "@/hooks/use-import";
-import { getErrorMessage } from "@/lib/errors";
-import { queryKeys } from "@/lib/queryKeys";
+import { useListings } from "@/hooks/use-listings";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -56,40 +53,18 @@ function RouteComponent() {
 		}
 	};
 
-	const { data: holdingsData } = useQuery({
-		queryKey: queryKeys.holdingsByPeriod("AllTime"),
-		queryFn: async () => {
-			const res = await commands.getHoldings("AllTime");
-			if (res.status === "error") throw new Error(getErrorMessage(res.error));
-			return res.data;
-		},
-	});
-
-	const listings = useMemo(() => {
-		if (!holdingsData) return [];
-		const map = new Map(
-			holdingsData.holdings.map((h) => [
-				h.listing_id,
-				{
-					listing_id: h.listing_id,
-					exchange_mic: h.exchange_mic,
-					ticker: h.ticker,
-				},
-			]),
-		);
-		return [...map.values()];
-	}, [holdingsData]);
+	const { data: listings = [] } = useListings();
 
 	const currencies = useMemo(() => {
-		if (!holdingsData) return [];
+		if (!listings) return [];
 		const set = new Set(
-			holdingsData.holdings
+			listings
 				.filter((h) => h.currency_code !== "EUR")
 				.map((h) => h.currency_code),
 		);
 
 		return [...set];
-	}, [holdingsData]);
+	}, [listings]);
 
 	return (
 		<div className="space-y-6 p-4">
@@ -111,7 +86,7 @@ function RouteComponent() {
 				{listings.length > 0 && (
 					<div className="mt-2 flex flex-col gap-2 border-l-2 pt-2 pl-4">
 						{listings.map((l) => (
-							<ListingPriceRow key={l.listing_id} {...l} />
+							<ListingPriceRow key={l.id} listing_id={l.id} {...l} />
 						))}
 					</div>
 				)}
