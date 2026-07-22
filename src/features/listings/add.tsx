@@ -1,6 +1,7 @@
 import { useStore } from "@tanstack/react-form";
 import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { type AddListingInput, commands } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
 	FieldGroup,
@@ -22,9 +23,36 @@ const ListingAddPage = () => {
 	const f = useAppForm({
 		...listingAddFormOpts,
 		onSubmit: async ({ value }) => {
-			console.log(value);
 			const parsed = listingAddSchema.parse(value);
-			console.log(parsed);
+			let payload: AddListingInput;
+
+			if (!instrumentLookup) {
+				payload = {
+					kind: "NewInstrument",
+					instrument: {
+						isin: parsed.isin,
+						...parsed.instrument,
+					},
+					listing: parsed.listing,
+				};
+			} else if (!isEditingInstrument) {
+				payload = {
+					kind: "ExistingInstrument",
+					instrument_id: instrumentLookup.id,
+					listing: parsed.listing,
+				};
+			} else {
+				payload = {
+					kind: "UpdateInstrument",
+					instrument_id: instrumentLookup.id,
+					instrument: {
+						isin: parsed.isin,
+						...parsed.instrument,
+					},
+					listing: parsed.listing,
+				};
+			}
+			await commands.addListingForm(payload);
 		},
 		formId: "listing_add_form",
 	});
@@ -37,7 +65,7 @@ const ListingAddPage = () => {
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
 
 	const setInstrument = useCallback(
-		async (v: typeof instrumentLookup) => {
+		(v: typeof instrumentLookup) => {
 			if (!v) return;
 			f.setFieldValue("instrument.name", v.name);
 			f.setFieldValue("instrument.issuer", v.issuer ?? "");

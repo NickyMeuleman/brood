@@ -4,6 +4,7 @@ use crate::isin;
 use crate::{AppError, SUPPORTED_EXCHANGES};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use sqlx::SqliteConnection;
 use tauri::State;
 
 #[derive(Debug, Serialize, Type)]
@@ -26,14 +27,9 @@ pub async fn find_instrument_by_isin(
     db: State<'_, Db>,
     isin: String,
 ) -> Result<Option<InstrumentDto>, AppError> {
-    match isin::validate(&isin) {
-        Ok(_) => (),
-        Err(e) => {
-            dbg!(e);
-        }
-    };
+    isin::validate(&isin)?;
 
-    let row = sqlx::query!(
+    Ok(sqlx::query!(
         r#"
         SELECT
             id                AS "id!",
@@ -52,9 +48,8 @@ pub async fn find_instrument_by_isin(
         isin
     )
     .fetch_optional(&db.pool)
-    .await?;
-
-    Ok(row.map(|r| InstrumentDto {
+    .await?
+    .map(|r| InstrumentDto {
         id: r.id,
         isin: r.isin,
         name: r.name,
@@ -68,52 +63,97 @@ pub async fn find_instrument_by_isin(
     }))
 }
 
-#[derive(Debug, Deserialize, Type)]
-pub struct CreateInstrumentInput {
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct InstrumentDetails {
     pub isin: String,
     pub name: String,
-    pub issuer: Option<String>,
+    pub issuer: String,
     pub instrument_type: InstrumentType,
     pub replication: Option<Replication>,
     pub fsma_registered: bool,
     pub accumulating: bool,
-    pub domicile: Option<String>,
+    pub domicile: String,
     pub subject_to_cgt: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ListingDetails {
+    pub mic: String,
+    pub ticker: String,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "kind")]
+pub enum AddListingInput {
+    NewInstrument {
+        instrument: InstrumentDetails,
+        listing: ListingDetails,
+    },
+    ExistingInstrument {
+        instrument_id: i64,
+        listing: ListingDetails,
+    },
+    UpdateInstrument {
+        instrument_id: i64,
+        instrument: InstrumentDetails,
+        listing: ListingDetails,
+    },
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn create_instrument(
-    db: State<'_, Db>,
-    fields: CreateInstrumentInput,
-) -> Result<i64, AppError> {
-    crate::isin::validate(&fields.isin)?;
+pub async fn add_listing_form(db: State<'_, Db>, input: AddListingInput) -> Result<i64, AppError> {
+    let mut tx = db.pool.begin().await?;
 
-    let name = fields.name.trim().to_string();
+    let (instrument_id, listing) = match input {
+        AddListingInput::NewInstrument {
+            instrument,
+            listing,
+        } => {
+            let id = add_instrument(&mut tx, instrument).await?;
+            (id, listing)
+        }
+        AddListingInput::ExistingInstrument {
+            instrument_id,
+            listing,
+        } => (instrument_id, listing),
+        AddListingInput::UpdateInstrument {
+            instrument_id,
+            instrument,
+            listing,
+        } => {
+            crate::isin::validate(&instrument.isin)?;
+            (instrument_id, listing)
+        }
+    };
+
+    let listing_id = add_listing(&mut tx, instrument_id, listing).await?;
+    tx.commit().await?;
+
+    Ok(listing_id)
+}
+
+async fn add_instrument(
+    conn: &mut SqliteConnection,
+    instrument: InstrumentDetails,
+) -> Result<i64, AppError> {
+    crate::isin::validate(&instrument.isin)?;
+
+    let name = instrument.name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::Validation("name must not be empty".into()));
     }
+    let issuer = instrument.issuer.trim().to_string();
+    if issuer.is_empty() {
+        return Err(AppError::Validation("issuer must not be empty".into()));
+    }
+    let domicile = instrument.domicile.trim().to_string();
+    if domicile.is_empty() {
+        return Err(AppError::Validation("domicile must not be empty".into()));
+    }
 
-    let issuer = fields
-        .issuer
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let domicile = fields
-        .domicile
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-
-    let fsma_registered = fields.fsma_registered as i64;
-    let accumulating = fields.accumulating as i64;
-    let subject_to_cgt = fields.subject_to_cgt as i64;
-
-    // fund_family_id intentionally omitted (always NULL) — family
-    // resolution/creation UI is deferred.
-    let result = sqlx::query!(
+    sqlx::query_scalar!(
         r#"
         INSERT INTO instrument
             (isin,
@@ -127,138 +167,83 @@ pub async fn create_instrument(
             subject_to_cgt)
         VALUES
             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        RETURNING id
         "#,
-        fields.isin,
+        instrument.isin,
         name,
         issuer,
-        fields.instrument_type,
-        fields.replication,
-        fsma_registered,
-        accumulating,
+        instrument.instrument_type,
+        instrument.replication,
+        instrument.fsma_registered,
+        instrument.accumulating,
         domicile,
-        subject_to_cgt,
+        instrument.subject_to_cgt,
     )
-    .execute(&db.pool)
-    .await;
-
-    match result {
-        Ok(res) => Ok(res.last_insert_rowid()),
-        Err(sqlx::Error::Database(db_err))
-            if db_err.message().contains("UNIQUE constraint failed") =>
-        {
-            Err(AppError::Validation(format!(
-                "An instrument with ISIN {} already exists",
-                fields.isin
-            )))
-        }
-        Err(e) => Err(AppError::from(e)),
-    }
+    .fetch_one(&mut *conn)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => AppError::Validation(
+            format!("An instrument with ISIN {} already exists", instrument.isin),
+        ),
+        e => AppError::from(e),
+    })
 }
 
-#[derive(Debug, Deserialize, Type)]
-pub struct CreateListingInput {
-    pub instrument_id: i64,
-    pub exchange_mic: String,
-    pub ticker: String,
-    pub currency_code: String,
-    pub settlement_currency_code: Option<String>,
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn create_listing(
-    db: State<'_, Db>,
-    fields: CreateListingInput,
+async fn add_listing(
+    conn: &mut SqliteConnection,
+    instrument_id: i64,
+    listing: ListingDetails,
 ) -> Result<i64, AppError> {
-    if !SUPPORTED_EXCHANGES
-        .iter()
-        .any(|e| e.mic == fields.exchange_mic)
-    {
+    if !SUPPORTED_EXCHANGES.iter().any(|e| e.mic == listing.mic) {
         return Err(AppError::Validation(format!(
             "Unsupported exchange MIC '{}'",
-            fields.exchange_mic
+            listing.mic
         )));
     }
 
-    let ticker = fields.ticker.trim().to_uppercase();
+    let ticker = listing.ticker.trim().to_uppercase();
     if ticker.is_empty() {
         return Err(AppError::Validation("ticker must not be empty".into()));
     }
 
-    let currency_code = fields.currency_code.trim().to_uppercase();
+    let currency_code = listing.currency.trim().to_uppercase();
     if currency_code.is_empty() {
-        return Err(AppError::Validation(
-            "currency_code must not be empty".into(),
-        ));
+        return Err(AppError::Validation("currency must not be empty".into()));
     }
 
-    let settlement_currency_code = fields
-        .settlement_currency_code
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_uppercase);
-
-    if let Some(settlement) = &settlement_currency_code {
-        if *settlement == currency_code {
-            return Err(AppError::Validation(
-                "settlement_currency_code must differ from currency_code, or be left empty".into(),
-            ));
-        }
-    }
-
-    // No pre-check that instrument_id exists: it's a value the backend just
-    // handed back from find_instrument_by_isin/create_instrument in this same
-    // session, and the FK constraint below is the actual guard if it's ever bogus.
-    let mut tx = db.pool.begin().await?;
-
-    // currency is a bare reference table (just the code) — safe to add on
-    // first use rather than requiring it to be pre-seeded.
     sqlx::query!(
-        r#"INSERT INTO currency (code) VALUES (?1) ON CONFLICT (code) DO NOTHING"#,
+        r#"
+        INSERT INTO currency (code) VALUES (?1) ON CONFLICT (code) DO NOTHING
+        "#,
         currency_code
     )
-    .execute(&mut *tx)
+    .execute(&mut *conn)
     .await?;
 
-    if let Some(settlement) = &settlement_currency_code {
-        sqlx::query!(
-            r#"INSERT INTO currency (code) VALUES (?1) ON CONFLICT (code) DO NOTHING"#,
-            settlement
-        )
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    let result = sqlx::query!(
+    sqlx::query_scalar!(
         r#"
-        INSERT INTO listing
-            (instrument_id, exchange_mic, ticker, currency_code, settlement_currency_code)
-        VALUES
-            (?1, ?2, ?3, ?4, ?5)
+        INSERT INTO listing (
+            instrument_id,
+            exchange_mic,
+            ticker,
+            currency_code)
+        VALUES (?1, ?2, ?3, ?4)
+        RETURNING id as "id!"
         "#,
-        fields.instrument_id,
-        fields.exchange_mic,
+        instrument_id,
+        listing.mic,
         ticker,
-        currency_code,
-        settlement_currency_code,
+        currency_code
     )
-    .execute(&mut *tx)
-    .await;
-
-    let listing_id = match result {
-        Ok(res) => res.last_insert_rowid(),
-        Err(sqlx::Error::Database(db_err))
-            if db_err.message().contains("UNIQUE constraint failed") =>
-        {
-            return Err(AppError::Validation(format!(
-                "{ticker} on {} is already registered for this instrument",
-                fields.exchange_mic
-            )));
+    .fetch_one(&mut *conn)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+            AppError::Validation(format!(
+                "A listing for ticker {} on exchange {} already exists",
+                ticker, listing.mic
+            ))
         }
-        Err(e) => return Err(AppError::from(e)),
-    };
-
-    tx.commit().await?;
-    Ok(listing_id)
+        e => AppError::from(e),
+    })
 }
