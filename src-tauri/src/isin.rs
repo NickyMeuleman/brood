@@ -37,44 +37,43 @@ fn luhn_checksum_valid(isin: &str) -> bool {
         return false;
     }
 
+    let bytes = isin.as_bytes();
     let mut sum = 0;
-    let mut double = true; // Start doubling the digit immediately to the left of the check digit
+    let mut double = true;
 
-    // Process from right to left, excluding the last character (the check digit)
-    // We expand letters on the fly and push digits into a temporary "queue"
-    // to process them in the correct order.
-
-    // Collect the 11 digits to process (in reverse order)
-    let mut digits = Vec::with_capacity(22);
-    for c in isin[..11].chars().rev() {
-        let val = match c {
-            '0'..='9' => c.to_digit(10).unwrap(),
-            'A'..='Z' => (c as u32 - 'A' as u32) + 10,
+    for &byte in bytes[..11].iter().rev() {
+        let val = match byte {
+            b'0'..=b'9' => (byte - b'0') as u32,
+            b'A'..=b'Z' => (byte - b'A' + 10) as u32,
             _ => return false,
         };
 
-        // Add digits to our list (ones place first, then tens place)
-        digits.push(val % 10);
-        if val >= 10 {
-            digits.push(val / 10);
-        }
-    }
-
-    // Now apply standard Luhn to the expanded digit list
-    for digit in digits {
-        let mut n = digit;
-        if double {
-            n *= 2;
-            if n > 9 {
-                n -= 9;
-            }
-        }
-        sum += n;
+        sum += luhn_weight(val % 10, double);
         double = !double;
+
+        if val >= 10 {
+            sum += luhn_weight(val / 10, double);
+            double = !double;
+        }
     }
 
-    let check_digit = isin.chars().last().unwrap().to_digit(10).unwrap();
-    (10 - (sum % 10)) % 10 == check_digit
+    let last = bytes[11];
+    let check_digit = match last {
+        b'0'..=b'9' => (last - b'0') as u32,
+        _ => return false,
+    };
+
+    (sum + check_digit) % 10 == 0
+}
+
+#[inline(always)]
+fn luhn_weight(digit: u32, double: bool) -> u32 {
+    if double {
+        let d = digit * 2;
+        if d > 9 { d - 9 } else { d }
+    } else {
+        digit
+    }
 }
 
 #[cfg(test)]
