@@ -68,14 +68,9 @@ impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match &err {
             sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
-            sqlx::Error::Database(db_err)
-                if db_err.message().contains("UNIQUE constraint failed") =>
-            {
-                AppError::Validation(
-                    "Tried to insert a duplicate. This trade or order probably already exists"
-                        .into(),
-                )
-            }
+            sqlx::Error::Database(db_err) if db_err.is_unique_violation() => AppError::Validation(
+                "Tried to insert a duplicate. This field probably already exists".into(),
+            ),
             _ => AppError::Database(err.to_string()),
         }
     }
@@ -329,3 +324,37 @@ const EEA_DOMICILES: [&str; 30] = [
     "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IS", "IE", "IT",
     "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
 ];
+
+pub fn sanitize_string(val: &str, name: &str) -> Result<String, AppError> {
+    let cleaned = val.trim();
+    if cleaned.is_empty() {
+        return Err(AppError::Validation(format!("{name} must not be empty")));
+    }
+    Ok(cleaned.to_string())
+}
+
+pub fn sanitize_ticker(val: &str) -> Result<String, AppError> {
+    let cleaned = val.trim().to_uppercase();
+    if cleaned.is_empty() || cleaned.len() > 12 {
+        return Err(AppError::Validation(
+            "Ticker must be 1-12 characters".into(),
+        ));
+    }
+    if !cleaned
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '^')
+    {
+        return Err(AppError::Validation("Malformed ticker".into()));
+    }
+    Ok(cleaned)
+}
+
+pub fn sanitize_mic(val: &str) -> Result<String, AppError> {
+    let cleaned = val.trim().to_uppercase();
+    if !SUPPORTED_EXCHANGES.iter().any(|e| e.mic == cleaned) {
+        return Err(AppError::Validation(format!(
+            "Unsupported exchange MIC '{cleaned}'"
+        )));
+    }
+    Ok(cleaned)
+}
