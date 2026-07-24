@@ -69,7 +69,7 @@ const instrumentFieldsSchema = z.object({
 		.or(z.literal(""))
 		.transform((v) => (v === "" ? null : v)),
 	fsma_registered: z.boolean(),
-	accumulating: z.boolean().optional(),
+	accumulating: z.boolean(),
 	domicile: z.string().trim(),
 	subject_to_cgt: z.boolean(),
 });

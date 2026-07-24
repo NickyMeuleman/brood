@@ -21,3 +21,72 @@ Exchange rate sources:
 Alternative price data options:
 - stooq
 - stockquotes
+
+Look up info about an instrument with:
+- openFIGI
+- EODHD
+
+
+figi plan:
+```
+curl 'https://api.openfigi.com/v3/mapping' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data '[
+      {"idType":"ID_ISIN","idValue":"IE00BFY0GT14","micCode":"XAMS"},
+      {"idType":"ID_ISIN","idValue":"IE00BFY0GT14","micCode":"XETA"}
+    ]'
+```
+
+Apparently not passing an API key in the headers limites you to 10 query objects per request.
+With an API key, this increases to 100.
+
+This returns:
+```
+[
+    {
+        "data": [
+            {
+                "figi": "BBG00NG1DZB5",
+                "name": "SS SPDR MSCI WORLD UC-USD AC",
+                "ticker": "SWRD",
+                "exchCode": "NA",
+                "compositeFIGI": "BBG00NG1DZ98",
+                "securityType": "ETP",
+                "marketSector": "Equity",
+                "shareClassFIGI": "BBG00NG1CK56",
+                "securityType2": "Mutual Fund",
+                "securityDescription": "SWRD"
+            }
+        ]
+    },
+    {
+        "data": [
+            {
+                "figi": "BBG00NG1CK47",
+                "name": "SS SPDR MSCI WORLD UC-USD AC",
+                "ticker": "SPPW",
+                "exchCode": "GT",
+                "compositeFIGI": "BBG00NG1CJQ6",
+                "securityType": "ETP",
+                "marketSector": "Equity",
+                "shareClassFIGI": "BBG00NG1CK56",
+                "securityType2": "Mutual Fund",
+                "securityDescription": "SPPW"
+            }
+        ]
+    }
+]
+```
+
+Alternative is asking for everything and filtering by supported exchange.
+Downside is it returns `exchCode`s and not MICs
+
+Upside is you only need to know the ISIN.
+```
+curl 'https://api.openfigi.com/v3/mapping' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data '[{"idType":"ID_ISIN","idValue":"IE00BFY0GT14"}]'
+```
+Same response structure, only the array within `data` will be long and the outermost array will be length 1.
