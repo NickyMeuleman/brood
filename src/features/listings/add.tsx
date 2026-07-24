@@ -1,7 +1,12 @@
 import { useStore } from "@tanstack/react-form";
 import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { type AddListingInput, commands } from "@/bindings";
+import {
+	type AddListingInput,
+	commands,
+	type InstrumentType,
+	type Replication,
+} from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
 	FieldGroup,
@@ -142,10 +147,12 @@ const ListingAddPage = () => {
 									{(field) => (
 										<field.SelectField
 											label="Type"
-											options={INSTRUMENT_TYPES.map((v) => ({
-												value: v,
-												label: v,
-											}))}
+											options={Object.entries(INSTRUMENT_TYPES).map(
+												([k, v]) => ({
+													value: k as InstrumentType,
+													label: v,
+												}),
+											)}
 											placeholder="Type of instrument"
 										/>
 									)}
@@ -154,9 +161,9 @@ const ListingAddPage = () => {
 									{(field) => (
 										<field.SelectField
 											label="Replication"
-											options={REPLICATIONS.map((v) => ({
-												value: v,
-												label: v.toLowerCase(),
+											options={Object.entries(REPLICATIONS).map(([k, v]) => ({
+												value: k as Replication,
+												label: v,
 											}))}
 											placeholder="Replication method"
 										/>

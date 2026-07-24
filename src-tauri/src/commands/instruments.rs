@@ -1,7 +1,6 @@
 use crate::db::Db;
 use crate::db::types::{InstrumentType, Replication};
-use crate::isin;
-use crate::{AppError, SUPPORTED_EXCHANGES};
+use crate::{AppError, isin, sanitize_mic, sanitize_string, sanitize_ticker};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqliteConnection;
@@ -67,7 +66,7 @@ pub async fn find_instrument_by_isin(
 pub struct InstrumentDetails {
     pub isin: String,
     pub name: String,
-    pub issuer: String,
+    pub issuer: Option<String>,
     pub instrument_type: InstrumentType,
     pub replication: Option<Replication>,
     pub fsma_registered: bool,
@@ -124,6 +123,7 @@ pub async fn add_listing_form(db: State<'_, Db>, input: AddListingInput) -> Resu
             listing,
         } => {
             crate::isin::validate(&instrument.isin)?;
+            update_instrument(&mut tx, instrument_id, instrument).await?;
             (instrument_id, listing)
         }
     };
@@ -138,20 +138,15 @@ async fn add_instrument(
     conn: &mut SqliteConnection,
     instrument: InstrumentDetails,
 ) -> Result<i64, AppError> {
-    crate::isin::validate(&instrument.isin)?;
+    let isin = instrument.isin.trim().to_uppercase();
+    crate::isin::validate(&isin)?;
 
-    let name = instrument.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".into()));
-    }
-    let issuer = instrument.issuer.trim().to_string();
-    if issuer.is_empty() {
-        return Err(AppError::Validation("issuer must not be empty".into()));
-    }
-    let domicile = instrument.domicile.trim().to_string();
-    if domicile.is_empty() {
-        return Err(AppError::Validation("domicile must not be empty".into()));
-    }
+    let name = sanitize_string(&instrument.name, "name")?;
+    let issuer = instrument
+        .issuer
+        .map(|issuer| sanitize_string(&issuer, "issuer"))
+        .transpose()?;
+    let domicile = sanitize_string(&instrument.domicile, "domicile")?;
 
     sqlx::query_scalar!(
         r#"
@@ -169,7 +164,7 @@ async fn add_instrument(
             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         RETURNING id
         "#,
-        instrument.isin,
+        isin,
         name,
         issuer,
         instrument.instrument_type,
@@ -189,27 +184,66 @@ async fn add_instrument(
     })
 }
 
+async fn update_instrument(
+    conn: &mut SqliteConnection,
+    instrument_id: i64,
+    instrument: InstrumentDetails,
+) -> Result<(), AppError> {
+    let isin = instrument.isin.trim().to_uppercase();
+    isin::validate(&isin)?;
+    let name = sanitize_string(&instrument.name, "name")?;
+    let issuer = instrument
+        .issuer
+        .map(|issuer| sanitize_string(&issuer, "issuer"))
+        .transpose()?;
+    let domicile = sanitize_string(&instrument.domicile, "domicile")?;
+
+    let rows = sqlx::query!(
+        r#"
+        UPDATE instrument
+        SET 
+          isin = ?1,
+          name = ?2,
+          issuer = ?3,
+          instrument_type = ?4, 
+          replication = ?5,
+          fsma_registered = ?6,
+          accumulating = ?7, 
+          domicile = ?8,
+          subject_to_cgt = ?9
+        WHERE id = ?10
+        "#,
+        isin,
+        name,
+        issuer,
+        instrument.instrument_type,
+        instrument.replication,
+        instrument.fsma_registered,
+        instrument.accumulating,
+        domicile,
+        instrument.subject_to_cgt,
+        instrument_id
+    )
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+
+    if rows == 0 {
+        return Err(AppError::Validation(
+            "Instrument not found for update".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn add_listing(
     conn: &mut SqliteConnection,
     instrument_id: i64,
     listing: ListingDetails,
 ) -> Result<i64, AppError> {
-    if !SUPPORTED_EXCHANGES.iter().any(|e| e.mic == listing.mic) {
-        return Err(AppError::Validation(format!(
-            "Unsupported exchange MIC '{}'",
-            listing.mic
-        )));
-    }
-
-    let ticker = listing.ticker.trim().to_uppercase();
-    if ticker.is_empty() {
-        return Err(AppError::Validation("ticker must not be empty".into()));
-    }
-
-    let currency_code = listing.currency.trim().to_uppercase();
-    if currency_code.is_empty() {
-        return Err(AppError::Validation("currency must not be empty".into()));
-    }
+    let mic = sanitize_mic(&listing.mic)?;
+    let ticker = sanitize_ticker(&listing.ticker)?;
+    let currency_code = sanitize_string(&listing.currency, "currency")?.to_uppercase();
 
     sqlx::query!(
         r#"
@@ -231,7 +265,7 @@ async fn add_listing(
         RETURNING id as "id!"
         "#,
         instrument_id,
-        listing.mic,
+        mic,
         ticker,
         currency_code
     )

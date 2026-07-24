@@ -1,5 +1,6 @@
 use crate::AppError;
-
+/// ISO 6166
+/// https://en.wikipedia.org/wiki/International_Securities_Identification_Number
 /// isin validator that actually matters,
 /// the one in the frontend is merely for UX,
 /// this one enforces correct data

@@ -44,25 +44,32 @@ export function isValidIsin(isin: string): boolean {
 	return isinValidator.safeParse(isin).success;
 }
 
-export const INSTRUMENT_TYPES: InstrumentType[] = [
-	"ETF",
-	"FUND",
-	"STOCK",
-	"BOND",
-	"OTHER",
-];
-export const REPLICATIONS: Replication[] = ["PHYSICAL", "SYNTHETIC"];
+export const INSTRUMENT_TYPES: Record<InstrumentType, string> = {
+	ETF: "Exchange Traded Fund",
+	FUND: "Fund",
+	STOCK: "Stock",
+	BOND: "Bond",
+	OTHER: "Other",
+};
+
+export const REPLICATIONS: Record<Replication, string> = {
+	PHYSICAL: "Physical",
+	SYNTHETIC: "Synthetic",
+};
 
 const instrumentFieldsSchema = z.object({
 	name: z.string().trim().min(1, "Required"),
-	issuer: z.string().trim(),
-	instrument_type: z.enum(INSTRUMENT_TYPES),
+	issuer: z
+		.string()
+		.trim()
+		.transform((v) => (v === "" ? null : v)),
+	instrument_type: z.enum(Object.keys(INSTRUMENT_TYPES) as InstrumentType[]),
 	replication: z
-		.enum(REPLICATIONS)
+		.enum(Object.keys(REPLICATIONS) as Replication[])
 		.or(z.literal(""))
 		.transform((v) => (v === "" ? null : v)),
 	fsma_registered: z.boolean(),
-	accumulating: z.boolean(),
+	accumulating: z.boolean().optional(),
 	domicile: z.string().trim(),
 	subject_to_cgt: z.boolean(),
 });

@@ -342,19 +342,34 @@ pub fn sanitize_ticker(val: &str) -> Result<String, AppError> {
     }
     if !cleaned
         .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '^')
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '^' | '/'))
     {
         return Err(AppError::Validation("Malformed ticker".into()));
     }
     Ok(cleaned)
 }
 
+/// ISO 10383
+/// https://en.wikipedia.org/wiki/Market_Identifier_Code
 pub fn sanitize_mic(val: &str) -> Result<String, AppError> {
     let cleaned = val.trim().to_uppercase();
     if !SUPPORTED_EXCHANGES.iter().any(|e| e.mic == cleaned) {
         return Err(AppError::Validation(format!(
             "Unsupported exchange MIC '{cleaned}'"
         )));
+    }
+    Ok(cleaned)
+}
+
+/// ISO 3166-1 alpha-2
+/// https://nl.wikipedia.org/wiki/ISO_3166-1_alpha-2
+pub fn sanitize_domicile(val: &str) -> Result<String, AppError> {
+    let cleaned = val.trim().to_uppercase();
+    if cleaned.len() != 2 {
+        return Err(AppError::Validation("Domicile must be 2 characters".into()));
+    }
+    if !cleaned.chars().all(|c| c.is_ascii_uppercase()) {
+        return Err(AppError::Validation("Malformed domicile".into()));
     }
     Ok(cleaned)
 }
