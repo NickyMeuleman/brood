@@ -2,7 +2,7 @@ use crate::sync::yahoo::{Error as YahooError, fetch_prices};
 use crate::{AppError, mic_timezone};
 use chrono::{Days, NaiveDate, Utc};
 use reqwest::Client;
-use sqlx::{Pool, Sqlite, pool};
+use sqlx::{Pool, Sqlite};
 use std::time::Duration;
 use tokio::time::sleep;
 

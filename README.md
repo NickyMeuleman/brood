@@ -26,6 +26,9 @@ Look up info about an instrument with:
 - openFIGI
 - EODHD
 
+more data can be sourced from:
+- https://marketstack.com/
+
 
 figi plan:
 ```
@@ -90,3 +93,4 @@ curl 'https://api.openfigi.com/v3/mapping' \
     --data '[{"idType":"ID_ISIN","idValue":"IE00BFY0GT14"}]'
 ```
 Same response structure, only the array within `data` will be long and the outermost array will be length 1.
+

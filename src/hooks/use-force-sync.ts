@@ -25,6 +25,8 @@ export function useForceUpdateOneListingPrices() {
 				exchange_mic,
 				ticker,
 			);
+			console.log(res);
+
 			if (res.status === "error") throw new Error(getErrorMessage(res.error));
 			return unwrapPriceOutcome(res.data);
 		},

@@ -34,4 +34,5 @@ export const queryKeys = {
 	supportedMics: ["supportedMics"] as const,
 	instruments: ["instruments"] as const,
 	instrumentByIsin: (isin: string) => ["instrument", isin] as const,
+	listingCandidates: (isin: string) => ["listingCandidates", isin] as const,
 };

@@ -1,6 +1,9 @@
 use crate::db::Db;
 use crate::db::types::{InstrumentType, Replication};
-use crate::{AppError, isin, sanitize_mic, sanitize_string, sanitize_ticker};
+use crate::lookup::openfigi::{ListingCandidate, search_isin_listings};
+use crate::{
+    AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_mic, sanitize_string, sanitize_ticker,
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::SqliteConnection;
@@ -280,4 +283,17 @@ async fn add_listing(
         }
         e => AppError::from(e),
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn find_listings_by_isin(
+    http: State<'_, HttpClient>,
+    isin: String,
+) -> Result<Vec<ListingCandidate>, AppError> {
+    let mics: Vec<&str> = SUPPORTED_EXCHANGES.iter().map(|e| e.mic).collect();
+
+    search_isin_listings(&http.client, &isin, &mics)
+        .await
+        .map_err(|e| AppError::ExternalService(e.to_string()))
 }

@@ -5,15 +5,22 @@ import {
 	type AddListingInput,
 	commands,
 	type InstrumentType,
+	type ListingCandidate,
 	type Replication,
 } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
+	Field,
+	FieldContent,
+	FieldDescription,
 	FieldGroup,
+	FieldLabel,
 	FieldLegend,
 	FieldSeparator,
 	FieldSet,
+	FieldTitle,
 } from "@/components/ui/field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
 	INSTRUMENT_TYPES,
 	listingAddFormOpts,
@@ -22,7 +29,9 @@ import {
 } from "@/features/listings/shared-form";
 import { useAppForm } from "@/hooks/form";
 import { useInstrumentLookup } from "@/hooks/use-instrument-lookup";
+import { useListingCandidates } from "@/hooks/use-listing-candidates";
 import { useMics } from "@/hooks/use-mics";
+import { MIC_LABEL } from "@/lib/utils";
 
 const ListingAddPage = () => {
 	const f = useAppForm({
@@ -65,6 +74,7 @@ const ListingAddPage = () => {
 	const { data: mics = [] } = useMics();
 	const isin = useStore(f.store, (s) => s.values.isin);
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
+	const { data: listingCandidates = [] } = useListingCandidates(isin);
 	const isKnownInstrument = !!instrumentLookup;
 	const [isEditingInstrument, setIsEditingInstrument] = useState(false);
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
@@ -85,7 +95,9 @@ const ListingAddPage = () => {
 	);
 
 	useEffect(() => {
-		if (!instrumentLookup) return;
+		if (!instrumentLookup) {
+			return;
+		}
 		setInstrument(instrumentLookup);
 		setIsEditingInstrument(false);
 	}, [instrumentLookup, setInstrument]);
@@ -110,6 +122,24 @@ const ListingAddPage = () => {
 								)}
 							</f.AppField>
 						</FieldGroup>
+
+						{listingCandidates.length > 0 ? (
+							<ListingCandidatesGrid
+								candidates={listingCandidates}
+								onSelect={(item) => {
+									if (f.getFieldMeta("listing.mic")?.isPristine) {
+										f.setFieldValue("listing.mic", item.mic);
+										f.setFieldMeta("listing.mic", (prev) => ({
+											...prev,
+											isTouched: false,
+											isDirty: false,
+											isPristine: true,
+										}));
+									}
+									console.log(item);
+								}}
+							/>
+						) : null}
 
 						<FieldSeparator />
 
@@ -256,4 +286,46 @@ const ListingAddPage = () => {
 	);
 };
 
+function ListingCandidatesGrid({
+	candidates,
+	onSelect,
+}: {
+	candidates: ListingCandidate[];
+	onSelect: (candidate: ListingCandidate) => void;
+}) {
+	if (!candidates || candidates.length === 0) return null;
+
+	return (
+		<FieldSet className="w-full">
+			<FieldLegend variant="label">Suggestions</FieldLegend>
+			<FieldDescription>This ISIN trades under these listings</FieldDescription>
+			<RadioGroup
+				onValueChange={(selected) => {
+					const chosenListing = candidates[selected];
+					if (chosenListing) onSelect(chosenListing);
+				}}
+				className="grid grid-cols-1 md:grid-cols-3"
+			>
+				{candidates.map((candidate, i) => {
+					const key = `${candidate.mic}-${candidate.ticker}`;
+					return (
+						<FieldLabel key={key} htmlFor={key}>
+							<Field orientation="horizontal">
+								<FieldContent>
+									<FieldTitle>{candidate.ticker}</FieldTitle>
+									<FieldDescription>
+										{MIC_LABEL[candidate.mic]
+											? `${candidate.mic} - ${MIC_LABEL[candidate.mic]}`
+											: `${candidate.mic}`}
+									</FieldDescription>
+								</FieldContent>
+								<RadioGroupItem value={i} id={key} />
+							</Field>
+						</FieldLabel>
+					);
+				})}
+			</RadioGroup>
+		</FieldSet>
+	);
+}
 export default ListingAddPage;
