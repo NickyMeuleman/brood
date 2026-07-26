@@ -73,6 +73,8 @@ const ListingAddPage = () => {
 
 	const { data: mics = [] } = useMics();
 	const isin = useStore(f.store, (s) => s.values.isin);
+	const mic = useStore(f.store, (s) => s.values.listing.mic);
+	const ticker = useStore(f.store, (s) => s.values.listing.ticker);
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
 	const { data: listingCandidates = [] } = useListingCandidates(isin);
 	const isKnownInstrument = !!instrumentLookup;
@@ -126,16 +128,10 @@ const ListingAddPage = () => {
 						{listingCandidates.length > 0 ? (
 							<ListingCandidatesGrid
 								candidates={listingCandidates}
+								selected={{ mic, ticker }}
 								onSelect={(item) => {
-									if (f.getFieldMeta("listing.mic")?.isPristine) {
-										f.setFieldValue("listing.mic", item.mic);
-										f.setFieldMeta("listing.mic", (prev) => ({
-											...prev,
-											isTouched: false,
-											isDirty: false,
-											isPristine: true,
-										}));
-									}
+									f.setFieldValue("listing.mic", item.mic);
+									f.setFieldValue("listing.ticker", item.ticker);
 									console.log(item);
 								}}
 							/>
@@ -288,20 +284,28 @@ const ListingAddPage = () => {
 
 function ListingCandidatesGrid({
 	candidates,
+	selected,
 	onSelect,
 }: {
 	candidates: ListingCandidate[];
+	selected: { mic: string; ticker: string };
 	onSelect: (candidate: ListingCandidate) => void;
 }) {
 	if (!candidates || candidates.length === 0) return null;
+
+	const selectedIdx = candidates.findIndex(
+		(c: ListingCandidate) =>
+			c.mic === selected.mic && c.ticker === selected.ticker,
+	);
 
 	return (
 		<FieldSet className="w-full">
 			<FieldLegend variant="label">Suggestions</FieldLegend>
 			<FieldDescription>This ISIN trades under these listings</FieldDescription>
 			<RadioGroup
-				onValueChange={(selected) => {
-					const chosenListing = candidates[selected];
+				value={selectedIdx === -1 ? null : selectedIdx}
+				onValueChange={(idx) => {
+					const chosenListing = candidates[idx];
 					if (chosenListing) onSelect(chosenListing);
 				}}
 				className="grid grid-cols-1 md:grid-cols-3"
