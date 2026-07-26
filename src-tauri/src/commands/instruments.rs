@@ -1,6 +1,8 @@
 use crate::db::Db;
 use crate::db::types::{InstrumentType, Replication};
-use crate::lookup::openfigi::{ListingCandidate, search_isin_listings};
+use crate::lookup::openfigi::{
+    ListingCandidate, guess_accumulating, guess_instrument_type, search_isin_listings,
+};
 use crate::{
     AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_mic, sanitize_string, sanitize_ticker,
 };
@@ -285,15 +287,30 @@ async fn add_listing(
     })
 }
 
+#[derive(Debug, Serialize, Type)]
+pub struct ListingSearchResult {
+    pub candidates: Vec<ListingCandidate>,
+    pub instrument_type_hint: Option<InstrumentType>,
+    pub accumulating_hint: Option<bool>,
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn find_listings_by_isin(
     http: State<'_, HttpClient>,
     isin: String,
-) -> Result<Vec<ListingCandidate>, AppError> {
+) -> Result<ListingSearchResult, AppError> {
     let mics: Vec<&str> = SUPPORTED_EXCHANGES.iter().map(|e| e.mic).collect();
 
-    search_isin_listings(&http.client, &isin, &mics)
+    let candidates = search_isin_listings(&http.client, &isin, &mics)
         .await
-        .map_err(|e| AppError::ExternalService(e.to_string()))
+        .map_err(|e| AppError::ExternalService(e.to_string()))?;
+
+    let first = candidates.first();
+
+    Ok(ListingSearchResult {
+        instrument_type_hint: first.and_then(guess_instrument_type),
+        accumulating_hint: first.and_then(guess_accumulating),
+        candidates,
+    })
 }

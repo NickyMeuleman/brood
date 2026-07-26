@@ -76,10 +76,20 @@ const ListingAddPage = () => {
 	const mic = useStore(f.store, (s) => s.values.listing.mic);
 	const ticker = useStore(f.store, (s) => s.values.listing.ticker);
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
-	const { data: listingCandidates = [] } = useListingCandidates(isin);
+	const { data: listingSearch } = useListingCandidates(isin);
+	const listingCandidates = listingSearch?.candidates ?? [];
 	const isKnownInstrument = !!instrumentLookup;
 	const [isEditingInstrument, setIsEditingInstrument] = useState(false);
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
+
+	const instrumentTypePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.instrument_type"]?.isPristine,
+	);
+	const accumulatingPristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.accumulating"]?.isPristine,
+	);
 
 	const setInstrument = useCallback(
 		(v: typeof instrumentLookup) => {
@@ -103,6 +113,30 @@ const ListingAddPage = () => {
 		setInstrument(instrumentLookup);
 		setIsEditingInstrument(false);
 	}, [instrumentLookup, setInstrument]);
+
+	useEffect(() => {
+		// a real stored fact always outranks a hint
+		if (isKnownInstrument || !listingSearch) return;
+
+		if (instrumentTypePristine && listingSearch.instrument_type_hint) {
+			f.setFieldValue(
+				"instrument.instrument_type",
+				listingSearch.instrument_type_hint,
+			);
+		}
+		if (accumulatingPristine && listingSearch.accumulating_hint != null) {
+			f.setFieldValue(
+				"instrument.accumulating",
+				listingSearch.accumulating_hint,
+			);
+		}
+	}, [
+		listingSearch,
+		instrumentTypePristine,
+		accumulatingPristine,
+		isKnownInstrument,
+		f,
+	]);
 
 	return (
 		<div className="m-auto mt-8 max-w-4xl p-4">

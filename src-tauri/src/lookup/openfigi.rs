@@ -1,8 +1,8 @@
-use std::time::Duration;
-
+use crate::db::types::InstrumentType;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
 
@@ -145,7 +145,7 @@ async fn fetch_chunk(
         .iter()
         .zip(results)
         .filter_map(|(&mic, res)| {
-            // Filtering by a single MIC should yield at most one listing
+            // can have multiple listings per MIC, the first one is usually the primary one
             let hit = res.data?.into_iter().next()?;
             build_candidate(mic, hit)
         })
@@ -154,9 +154,7 @@ async fn fetch_chunk(
     Ok(candidates)
 }
 
-/// Turns a single FIGI match into a form suggestion. Pure and separately
-/// testable on purpose — this is the seam where instrument_type-guessing
-/// logic will grow, and it shouldn't need an HTTP mock to test.
+// should I move hint guessing here? eventhough the hints are instrument level and not listing
 fn build_candidate(mic: &str, data: FigiData) -> Option<ListingCandidate> {
     Some(ListingCandidate {
         mic: mic.to_string(),
@@ -166,4 +164,27 @@ fn build_candidate(mic: &str, data: FigiData) -> Option<ListingCandidate> {
         security_type_2: data.security_type_2,
         market_sector: data.market_sector,
     })
+}
+
+pub fn guess_instrument_type(candidate: &ListingCandidate) -> Option<InstrumentType> {
+    match (
+        candidate.security_type.as_deref(),
+        candidate.market_sector.as_deref(),
+    ) {
+        (Some("ETP"), _) => Some(InstrumentType::Etf),
+        (Some("Common Stock"), _) => Some(InstrumentType::Stock),
+        (_, Some("Govt")) => Some(InstrumentType::Bond),
+        _ => None,
+    }
+}
+
+pub fn guess_accumulating(candidate: &ListingCandidate) -> Option<bool> {
+    let name = candidate.name.to_uppercase();
+    if name.contains("(ACC)") || name.ends_with("ACC") || name.ends_with("AC") {
+        Some(true)
+    } else if name.contains("(DIST)") || name.ends_with("DIST") || name.ends_with("DIS") {
+        Some(false)
+    } else {
+        None
+    }
 }
