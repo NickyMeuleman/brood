@@ -2,6 +2,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use thiserror::Error;
 
 use crate::{mic_timezone, yahoo_suffix};
@@ -39,14 +40,14 @@ pub struct PriceBar {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ChartResponse {
-    chart: Chart,
+pub struct ChartResponse {
+    pub chart: Chart,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Chart {
-    result: Option<Vec<ChartResult>>,
-    error: Option<serde_json::Value>,
+pub struct Chart {
+    pub result: Option<Vec<ChartResult>>,
+    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -57,7 +58,7 @@ pub struct ChartResult {
 }
 
 // only fields that are necessary are not an Option or defaulted
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
     pub currency: Option<String>,
@@ -91,14 +92,14 @@ pub struct Meta {
     pub valid_ranges: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 pub struct TradingPeriods {
     pub pre: TradingPeriod,
     pub regular: TradingPeriod,
     pub post: TradingPeriod,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 pub struct TradingPeriod {
     pub timezone: String,
     pub start: i64,

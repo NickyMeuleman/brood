@@ -12,7 +12,9 @@ mod sync;
 use chrono_tz::{America, Asia, Australia, Europe, Tz};
 use commands::chart::get_portfolio_history;
 use commands::holdings::get_holdings;
-use commands::instruments::{add_listing_form, find_instrument_by_isin, find_listings_by_isin};
+use commands::instruments::{
+    add_listing_form, find_instrument_by_isin, find_listings_by_isin, listing_meta,
+};
 use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
@@ -104,6 +106,7 @@ pub fn run() {
         find_instrument_by_isin,
         add_listing_form,
         find_listings_by_isin,
+        listing_meta
     ]);
 
     #[cfg(debug_assertions)]

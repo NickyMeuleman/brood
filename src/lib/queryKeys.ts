@@ -35,4 +35,6 @@ export const queryKeys = {
 	instruments: ["instruments"] as const,
 	instrumentByIsin: (isin: string) => ["instrument", isin] as const,
 	listingCandidates: (isin: string) => ["listingCandidates", isin] as const,
+	listingMeta: (mic: string, ticker: string) =>
+		["listingMeta", mic, ticker] as const,
 };

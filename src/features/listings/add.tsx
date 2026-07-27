@@ -30,6 +30,7 @@ import {
 import { useAppForm } from "@/hooks/form";
 import { useInstrumentLookup } from "@/hooks/use-instrument-lookup";
 import { useListingCandidates } from "@/hooks/use-listing-candidates";
+import { useListingMeta } from "@/hooks/use-listing-meta";
 import { useMics } from "@/hooks/use-mics";
 import { MIC_LABEL } from "@/lib/utils";
 
@@ -71,26 +72,21 @@ const ListingAddPage = () => {
 		formId: "listing_add_form",
 	});
 
-	const { data: mics = [] } = useMics();
 	const isin = useStore(f.store, (s) => s.values.isin);
 	const mic = useStore(f.store, (s) => s.values.listing.mic);
 	const ticker = useStore(f.store, (s) => s.values.listing.ticker);
+
+	const { data: mics = [] } = useMics();
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
 	const { data: listingSearch } = useListingCandidates(isin);
 	const listingCandidates = listingSearch?.candidates ?? [];
 	const isKnownInstrument = !!instrumentLookup;
+	const { data: listingMeta } = useListingMeta(mic, ticker);
+
 	const [isEditingInstrument, setIsEditingInstrument] = useState(false);
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
 
-	const instrumentTypePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.instrument_type"]?.isPristine,
-	);
-	const accumulatingPristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.accumulating"]?.isPristine,
-	);
-
+  // existing instrument
 	const setInstrument = useCallback(
 		(v: typeof instrumentLookup) => {
 			if (!v) return;
@@ -105,7 +101,6 @@ const ListingAddPage = () => {
 		},
 		[f],
 	);
-
 	useEffect(() => {
 		if (!instrumentLookup) {
 			return;
@@ -114,6 +109,15 @@ const ListingAddPage = () => {
 		setIsEditingInstrument(false);
 	}, [instrumentLookup, setInstrument]);
 
+	// instrument_type and accumulating
+	const instrumentTypePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.instrument_type"]?.isPristine,
+	);
+	const accumulatingPristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.accumulating"]?.isPristine,
+	);
 	useEffect(() => {
 		// a real stored fact always outranks a hint
 		if (isKnownInstrument || !listingSearch) return;
@@ -137,6 +141,27 @@ const ListingAddPage = () => {
 		isKnownInstrument,
 		f,
 	]);
+
+	// name
+	const namePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.name"]?.isPristine,
+	);
+	useEffect(() => {
+		if (isKnownInstrument) return;
+		if (!namePristine || !listingMeta?.longName) return;
+		f.setFieldValue("instrument.name", listingMeta.longName);
+	}, [listingMeta, namePristine, isKnownInstrument, f]);
+
+	// currency
+	const currencyPristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["listing.currency"]?.isPristine,
+	);
+	useEffect(() => {
+		if (!currencyPristine || !listingMeta?.currency) return;
+		f.setFieldValue("listing.currency", listingMeta.currency);
+	}, [listingMeta, currencyPristine, f]);
 
 	return (
 		<div className="m-auto mt-8 max-w-4xl p-4">
@@ -166,7 +191,6 @@ const ListingAddPage = () => {
 								onSelect={(item) => {
 									f.setFieldValue("listing.mic", item.mic);
 									f.setFieldValue("listing.ticker", item.ticker);
-									console.log(item);
 								}}
 							/>
 						) : null}

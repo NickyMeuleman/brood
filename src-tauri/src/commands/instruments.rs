@@ -3,6 +3,8 @@ use crate::db::types::{InstrumentType, Replication};
 use crate::lookup::openfigi::{
     ListingCandidate, guess_accumulating, guess_instrument_type, search_isin_listings,
 };
+use crate::lookup::yahoo::get_listing_meta;
+use crate::sync::yahoo::Meta;
 use crate::{
     AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_mic, sanitize_string, sanitize_ticker,
 };
@@ -313,4 +315,16 @@ pub async fn find_listings_by_isin(
         accumulating_hint: first.and_then(guess_accumulating),
         candidates,
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn listing_meta(
+    http: State<'_, HttpClient>,
+    ticker: String,
+    mic: String,
+) -> Result<Meta, AppError> {
+    get_listing_meta(&http.client, &ticker, &mic)
+        .await
+        .map_err(|e| AppError::ExternalService(e.to_string()))
 }
