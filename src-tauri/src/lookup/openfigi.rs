@@ -154,7 +154,6 @@ async fn fetch_chunk(
     Ok(candidates)
 }
 
-// should I move hint guessing here? eventhough the hints are instrument level and not listing
 fn build_candidate(mic: &str, data: FigiData) -> Option<ListingCandidate> {
     Some(ListingCandidate {
         mic: mic.to_string(),
@@ -167,24 +166,32 @@ fn build_candidate(mic: &str, data: FigiData) -> Option<ListingCandidate> {
 }
 
 pub fn guess_instrument_type(candidate: &ListingCandidate) -> Option<InstrumentType> {
-    match (
-        candidate.security_type.as_deref(),
-        candidate.market_sector.as_deref(),
-    ) {
-        (Some("ETP"), _) => Some(InstrumentType::Etf),
-        (Some("Common Stock"), _) => Some(InstrumentType::Stock),
-        (_, Some("Govt")) => Some(InstrumentType::Bond),
+    // Catch ETFs first (Bloomberg puts them in the "Equity" sector)
+    if candidate.security_type.as_deref() == Some("ETP") {
+        return Some(InstrumentType::Etf);
+    }
+
+    match candidate.market_sector.as_deref() {
+        Some("Equity" | "Pfd") => Some(InstrumentType::Stock),
+        Some("Govt" | "Corp" | "Mtge" | "Muni") => Some(InstrumentType::Bond),
         _ => None,
     }
 }
 
 pub fn guess_accumulating(candidate: &ListingCandidate) -> Option<bool> {
     let name = candidate.name.to_uppercase();
-    if name.contains("(ACC)") || name.ends_with("ACC") || name.ends_with("AC") {
-        Some(true)
-    } else if name.contains("(DIST)") || name.ends_with("DIST") || name.ends_with("DIS") {
-        Some(false)
-    } else {
-        None
+    let words: Vec<_> = name.split(|c: char| !c.is_alphanumeric()).collect();
+
+    let is_acc = words
+        .iter()
+        .any(|&w| matches!(w, "ACC" | "AC" | "ACCUMULATING"));
+    let is_dist = words
+        .iter()
+        .any(|&w| matches!(w, "DIS" | "DIST" | "DISTRIBUTING"));
+
+    match (is_acc, is_dist) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
     }
 }
