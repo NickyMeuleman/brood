@@ -1,12 +1,13 @@
 use crate::db::Db;
 use crate::db::types::InstrumentType;
-use crate::{AppError, EEA_DOMICILES, parse_decimal_external};
+use crate::sync::backfill;
+use crate::{AppError, EEA_DOMICILES, HttpClient, parse_decimal_external};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::{Pool, Sqlite};
-use tauri::State;
+use tauri::{State, http};
 
 #[derive(Debug, Serialize, Type)]
 pub struct ListingInfo {
@@ -215,8 +216,20 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
 
 #[tauri::command]
 #[specta::specta]
-pub async fn buy(db: State<'_, Db>, fields: CreateBuyTradeInput) -> Result<(), AppError> {
-    buy_core(&db.pool, fields).await
+pub async fn buy(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+    fields: CreateBuyTradeInput,
+) -> Result<(), AppError> {
+    let listing_id = fields.listing_id;
+    buy_core(&db.pool, fields).await?;
+
+    // try to backfill prices/FX-rates for this holding, not a hard error
+    if let Err(e) = backfill(&db.pool, &http.client, listing_id).await {
+        eprintln!("Post-buy sync for listing {listing_id} failed (non-fatal): {e}");
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Type)]

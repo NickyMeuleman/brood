@@ -1,12 +1,11 @@
 import { useStore } from "@tanstack/react-form";
 import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-	type AddListingInput,
-	commands,
-	type InstrumentType,
-	type ListingCandidate,
-	type Replication,
+import type {
+	AddListingInput,
+	InstrumentType,
+	ListingCandidate,
+	Replication,
 } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
