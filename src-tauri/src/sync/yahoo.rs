@@ -58,7 +58,7 @@ pub struct ChartResult {
 }
 
 // only fields that are necessary are not an Option or defaulted
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
     pub currency: Option<String>,
@@ -92,14 +92,14 @@ pub struct Meta {
     pub valid_ranges: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TradingPeriods {
     pub pre: TradingPeriod,
     pub regular: TradingPeriod,
     pub post: TradingPeriod,
 }
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TradingPeriod {
     pub timezone: String,
     pub start: i64,

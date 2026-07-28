@@ -28,6 +28,7 @@ import {
 	REPLICATIONS,
 } from "@/features/listings/shared-form";
 import { useAppForm } from "@/hooks/form";
+import { useAddListing } from "@/hooks/use-add-listing";
 import { useInstrumentLookup } from "@/hooks/use-instrument-lookup";
 import { useListingCandidates } from "@/hooks/use-listing-candidates";
 import { useListingMeta } from "@/hooks/use-listing-meta";
@@ -35,6 +36,8 @@ import { useMics } from "@/hooks/use-mics";
 import { MIC_LABEL } from "@/lib/utils";
 
 const ListingAddPage = () => {
+	const addListing = useAddListing();
+
 	const f = useAppForm({
 		...listingAddFormOpts,
 		onSubmit: async ({ value }) => {
@@ -67,7 +70,10 @@ const ListingAddPage = () => {
 					listing: parsed.listing,
 				};
 			}
-			await commands.addListingForm(payload);
+
+			addListing.mutate(payload);
+			f.reset();
+			setIsEditingInstrument(false);
 		},
 		formId: "listing_add_form",
 	});
@@ -86,7 +92,7 @@ const ListingAddPage = () => {
 	const [isEditingInstrument, setIsEditingInstrument] = useState(false);
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
 
-  // existing instrument
+	// existing instrument
 	const setInstrument = useCallback(
 		(v: typeof instrumentLookup) => {
 			if (!v) return;
@@ -142,16 +148,36 @@ const ListingAddPage = () => {
 		f,
 	]);
 
-	// name
+	// FIGI name (basic, only based on isin)
 	const namePristine = useStore(
 		f.store,
 		(s) => s.fieldMeta["instrument.name"]?.isPristine,
 	);
 	useEffect(() => {
-		if (isKnownInstrument) return;
-		if (!namePristine || !listingMeta?.longName) return;
-		f.setFieldValue("instrument.name", listingMeta.longName);
+		if (isKnownInstrument || !namePristine) return;
+		const name = listingCandidates?.[0]?.name;
+		if (name) {
+			f.setFieldValue("instrument.name", name);
+		}
+	}, [listingCandidates, namePristine, isKnownInstrument, f]);
+
+	// Yahoo name (better, based on ticker + mic)
+	useEffect(() => {
+		if (isKnownInstrument || !namePristine || !listingMeta?.name) return;
+		f.setFieldValue("instrument.name", listingMeta.name);
 	}, [listingMeta, namePristine, isKnownInstrument, f]);
+
+	// accumulating — second chance against the fuller name, same pristine gate
+	useEffect(() => {
+		if (
+			isKnownInstrument ||
+			!accumulatingPristine ||
+			listingMeta?.accumulating_hint == null
+		) {
+			return;
+		}
+		f.setFieldValue("instrument.accumulating", listingMeta.accumulating_hint);
+	}, [listingMeta, accumulatingPristine, isKnownInstrument, f]);
 
 	// currency
 	const currencyPristine = useStore(

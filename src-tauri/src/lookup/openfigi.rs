@@ -178,8 +178,8 @@ pub fn guess_instrument_type(candidate: &ListingCandidate) -> Option<InstrumentT
     }
 }
 
-pub fn guess_accumulating(candidate: &ListingCandidate) -> Option<bool> {
-    let name = candidate.name.to_uppercase();
+pub fn guess_accumulating(name: &str) -> Option<bool> {
+    let name = name.to_uppercase();
     let words: Vec<_> = name.split(|c: char| !c.is_alphanumeric()).collect();
 
     let is_acc = words

@@ -312,9 +312,18 @@ pub async fn find_listings_by_isin(
 
     Ok(ListingSearchResult {
         instrument_type_hint: first.and_then(guess_instrument_type),
-        accumulating_hint: first.and_then(guess_accumulating),
+        accumulating_hint: first.and_then(|item| guess_accumulating(&item.name)),
         candidates,
     })
+}
+
+#[derive(Debug, Serialize, Type)]
+pub struct MetaHints {
+    pub currency: String,
+    pub name: Option<String>,
+    /// Re-checked against Yahoo's fuller name.
+    /// (Already done with FIGI name, but this name is better)
+    pub accumulating_hint: Option<bool>,
 }
 
 #[tauri::command]
@@ -323,8 +332,22 @@ pub async fn listing_meta(
     http: State<'_, HttpClient>,
     ticker: String,
     mic: String,
-) -> Result<Meta, AppError> {
-    get_listing_meta(&http.client, &ticker, &mic)
+) -> Result<MetaHints, AppError> {
+    let meta = get_listing_meta(&http.client, &ticker, &mic)
         .await
-        .map_err(|e| AppError::ExternalService(e.to_string()))
+        .map_err(|e| AppError::ExternalService(e.to_string()))?;
+    let accumulating_hint = meta
+        .long_name
+        .as_ref()
+        .and_then(|name| guess_accumulating(name));
+    let name = meta.long_name;
+    let currency = meta.currency.ok_or_else(|| {
+        AppError::ExternalService(format!("No currency was found for {ticker} on {mic}"))
+    })?;
+
+    Ok(MetaHints {
+        currency,
+        name,
+        accumulating_hint,
+    })
 }
