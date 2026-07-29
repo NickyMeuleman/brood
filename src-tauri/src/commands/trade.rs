@@ -224,6 +224,7 @@ pub async fn buy(
     let listing_id = fields.listing_id;
     buy_core(&db.pool, fields).await?;
 
+    dbg!("running backfill");
     // try to backfill prices/FX-rates for this holding, not a hard error
     if let Err(e) = backfill(&db.pool, &http.client, listing_id).await {
         eprintln!("Post-buy sync for listing {listing_id} failed (non-fatal): {e}");

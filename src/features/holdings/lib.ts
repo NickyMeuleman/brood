@@ -41,8 +41,8 @@ export function normalizeHolding(
 	const resolveCurrent = (snap: Snapshot, useEur: boolean) => {
 		return {
 			quantity: toNum(snap.quantity),
-			unit_price: toNum(cur(snap.unit_price, useEur)),
-			value: toNum(cur(snap.value, useEur)),
+			unit_price: snap.unit_price ? toNum(cur(snap.unit_price, useEur)) : null,
+			value: snap.value ? toNum(cur(snap.value, useEur)) : null,
 			unit_price_basis: toNum(pick(cur(snap.unit_price_basis, useEur))),
 		};
 	};

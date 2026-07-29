@@ -1,11 +1,11 @@
 use crate::commands::lot_data::load_lot_records;
 use crate::commands::{
-    get_prices_on_or_before, get_rates_on_or_before, period_start, resolve_rate, CurrencyPair,
-    NetGross, Performance, Period, PeriodContext, Snapshot,
+    CurrencyPair, NetGross, Performance, Period, PeriodContext, Snapshot, get_prices_on_or_before,
+    get_rates_on_or_before, period_start, resolve_rate,
 };
-use crate::db::types::InstrumentType;
 use crate::db::Db;
-use crate::{parse_decimal_internal, AppError};
+use crate::db::types::InstrumentType;
+use crate::{AppError, parse_decimal_internal};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
@@ -38,7 +38,8 @@ struct HoldingAcc {
     currency_code: String,
 
     quantity: Decimal,
-    unit_price: Decimal,
+    unit_price: Option<Decimal>,
+    earliest_acquisition: Option<NaiveDate>,
 
     period_start_quantity: Decimal,
     period_start_unit_price: Option<Decimal>,
@@ -101,9 +102,14 @@ fn build_holding_payload(
     period_start_date: Option<NaiveDate>,
     period_start_rates: &HashMap<String, Decimal>,
 ) -> Result<HoldingPayload, AppError> {
-    let rate = resolve_rate(&h.currency_code, &latest_rates, "current rate")?;
-    let value = h.quantity * h.unit_price;
-    let value_eur = value * rate;
+    // only look up rate if a price exists
+    // todo: issomeand
+    let rate = h
+        .unit_price
+        .map(|_| resolve_rate(&h.currency_code, &latest_rates, "current rate"))
+        .transpose()?;
+    let value = h.unit_price.map(|p| h.quantity * p);
+    let value_eur = value.zip(rate).map(|(v, r)| v * r);
 
     // --- 1. ALL-TIME METRICS ---
     let all_time_perf = CurrencyPair {
@@ -192,14 +198,13 @@ fn build_holding_payload(
         // State
         current: Snapshot {
             quantity: h.quantity,
-            unit_price: CurrencyPair {
-                local: h.unit_price,
-                eur: h.unit_price * rate,
-            },
-            value: CurrencyPair {
-                local: value,
-                eur: value_eur,
-            },
+            unit_price: h.unit_price.zip(rate).map(|(p, r)| CurrencyPair {
+                local: p,
+                eur: p * r,
+            }),
+            value: value
+                .zip(value_eur)
+                .map(|(local, eur)| CurrencyPair { local, eur }),
             unit_price_basis: CurrencyPair {
                 local: NetGross {
                     net: get_basis(all_time_perf.local.net.cost),
@@ -309,7 +314,8 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
                 currency_code: lot.currency_code.clone(),
 
                 quantity: Decimal::ZERO,
-                unit_price: Decimal::ZERO,
+                unit_price: None,
+                earliest_acquisition: None,
 
                 period_start_quantity: Decimal::ZERO,
                 period_start_unit_price: None,
@@ -325,12 +331,18 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
             .map(|start| lot.acquisition_date >= start)
             // all lots are "new" for "AllTime"
             .unwrap_or(true);
+
         // price_per_unit is always correct, even for CA-originated lots because it is recalculated
         // at CA time (old lot is closed, new lot with adjusted price is added)
         let cost_local = lot.price_per_unit * qty;
         let cost_eur = lot.cost_contribution_eur(qty);
         let fees_local = lot.fees_local_for_qty(qty);
         let fees_eur = lot.fees_eur_for_qty(qty);
+
+        h.earliest_acquisition = h
+            .earliest_acquisition
+            .map(|existing| existing.min(lot.acquisition_date))
+            .or(Some(lot.acquisition_date));
 
         if acq_during_period {
             h.period.cost.local += cost_local;
@@ -348,10 +360,21 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
         h.all_time.fees.eur += fees_eur;
     }
 
+    let sync_cutoff = today.pred_opt().expect("valid date");
+
     for (listing_id, h) in holdings.iter_mut() {
-        h.unit_price = latest_prices.get(listing_id).copied().ok_or_else(|| {
-            AppError::MissingData(format!("Missing current price for listing_id: {listing_id} (ticker: {})", h.ticker))
-        })?;
+        h.unit_price = match latest_prices.get(listing_id).copied() {
+            Some(price) => Some(price),
+            // holding is missing a price for a finished day (expected for new holdings)
+            None if h.earliest_acquisition.is_some_and(|d| d > sync_cutoff) => None,
+            // holding is missing a price for a finished day (unexpected)
+            None => {
+                return Err(AppError::MissingData(format!(
+                    "Missing current price for listing_id: {listing_id} (ticker: {})",
+                    h.ticker
+                )));
+            }
+        };
         h.period_start_unit_price = period_start_prices.get(listing_id).copied();
     }
 
@@ -363,7 +386,9 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
 
     let mut totals = TotalsEUR::default();
     for h in &holding_payloads {
-        totals.value += h.current.value.eur;
+        if let Some(v) = &h.current.value {
+            totals.value += v.eur;
+        }
         totals.period_start_value = totals
             .period_start_value
             .zip(h.period.start_value)

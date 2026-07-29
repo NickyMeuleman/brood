@@ -80,11 +80,13 @@ impl Performance {
 
     pub fn calculate(
         start_value: Option<Decimal>,
-        end_value: Decimal,
+        end_value: Option<Decimal>,
         gross_cost: Decimal,
         fees: Decimal,
     ) -> Self {
-        let gross_gain = start_value.map(|n| end_value - n - gross_cost);
+        let gross_gain = start_value
+            .zip(end_value)
+            .map(|(start, end)| end - start - gross_cost);
         let gross_base = start_value.map(|n| n + gross_cost);
 
         let get_pct_gain = |gain: Option<Decimal>, base: Option<Decimal>| match (gain, base) {
@@ -125,8 +127,8 @@ impl Performance {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 pub struct Snapshot {
     pub quantity: Decimal,
-    pub unit_price: CurrencyPair<Decimal>,
-    pub value: CurrencyPair<Decimal>,
+    pub unit_price: Option<CurrencyPair<Decimal>>,
+    pub value: Option<CurrencyPair<Decimal>>,
     pub unit_price_basis: CurrencyPair<NetGross<Decimal>>,
 }
 
