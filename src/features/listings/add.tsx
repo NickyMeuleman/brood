@@ -1,5 +1,5 @@
 import { useStore } from "@tanstack/react-form";
-import { Pencil } from "lucide-react";
+import { Pencil, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
 	AddListingInput,
@@ -83,10 +83,14 @@ const ListingAddPage = () => {
 
 	const { data: mics = [] } = useMics();
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
-	const { data: listingSearch } = useListingCandidates(isin);
+	const { data: listingSearch, isLoading: candidatesLoading } =
+		useListingCandidates(isin);
 	const listingCandidates = listingSearch?.candidates ?? [];
 	const isKnownInstrument = !!instrumentLookup;
-	const { data: listingMeta } = useListingMeta(mic, ticker);
+	const { data: listingMeta, isLoading: listingMetaLoading } = useListingMeta(
+		mic,
+		ticker,
+	);
 
 	const [isEditingInstrument, setIsEditingInstrument] = useState(false);
 	const isInstrumentEditable = !isKnownInstrument || isEditingInstrument;
@@ -152,11 +156,18 @@ const ListingAddPage = () => {
 		f.store,
 		(s) => s.fieldMeta["instrument.name"]?.isPristine,
 	);
+
 	useEffect(() => {
 		if (isKnownInstrument || !namePristine) return;
 		const name = listingCandidates?.[0]?.name;
 		if (name) {
 			f.setFieldValue("instrument.name", name);
+			f.setFieldMeta("instrument.name", (prev) => ({
+				...prev,
+				isTouched: false,
+				isDirty: false,
+				isPristine: true,
+			}));
 		}
 	}, [listingCandidates, namePristine, isKnownInstrument, f]);
 
@@ -208,6 +219,13 @@ const ListingAddPage = () => {
 								)}
 							</f.AppField>
 						</FieldGroup>
+
+						{candidatesLoading && (
+							<p className="flex items-center gap-1.5 text-muted-foreground text-sm">
+								<RefreshCw className="h-3.5 w-3.5 animate-spin" />
+								Looking up listings for this ISIN…
+							</p>
+						)}
 
 						{listingCandidates.length > 0 ? (
 							<ListingCandidatesGrid
@@ -335,8 +353,14 @@ const ListingAddPage = () => {
 						<FieldSeparator />
 
 						<FieldSet>
-							<FieldLegend className="mb-6 font-bold">
+							<FieldLegend className="mb-6 flex items-center justify-between font-bold">
 								Listing Details
+								{listingMetaLoading && (
+									<p className="flex items-center gap-1.5 text-muted-foreground text-sm">
+										<RefreshCw className="h-3.5 w-3.5 animate-spin" />
+										Loading listing info...
+									</p>
+								)}
 							</FieldLegend>
 							<FieldGroup className="grid items-start gap-6 md:grid-cols-3">
 								<f.AppField name="listing.mic">
