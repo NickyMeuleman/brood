@@ -15,6 +15,7 @@ export default function RouteComponent() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: run once at startup
 	useEffect(() => {
+    // off during dev to avoid hammering API
 		// sync.mutate();
 	}, []);
 

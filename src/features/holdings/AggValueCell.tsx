@@ -11,6 +11,7 @@ export function AggValueCell({ row }: CellContext<HoldingRow, number>) {
 				isConverted={row.original.is_converted}
 				originalValue={row.original.local.current.value}
 				originalCurrency={row.original.currency_code}
+        missingLabel="Waiting for first price"
 				className="font-medium text-base"
 			/>
 			<div className="flex gap-0.5 text-muted-foreground text-sm">

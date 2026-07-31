@@ -124,6 +124,7 @@ const snapshotColumns = [
 					isConverted={row.original.is_converted}
 					originalValue={row.original.local.current.unit_price}
 					originalCurrency={row.original.currency_code}
+					missingLabel="Waiting for first price"
 				/>
 			);
 		},
@@ -139,6 +140,7 @@ const snapshotColumns = [
 				isConverted={row.original.is_converted}
 				originalValue={row.original.local.current.value}
 				originalCurrency={row.original.currency_code}
+				missingLabel="Waiting for first price"
 			/>
 		),
 		footer: ({ table }) => {

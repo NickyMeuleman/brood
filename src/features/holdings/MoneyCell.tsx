@@ -14,6 +14,7 @@ export function MoneyCell({
 	originalCurrency,
 	className,
 	numFormatOpts,
+	missingLabel = "Missing data",
 }: {
 	value: number | null;
 	currency: string;
@@ -22,6 +23,7 @@ export function MoneyCell({
 	originalCurrency?: string;
 	className?: string;
 	numFormatOpts?: Intl.NumberFormatOptions;
+	missingLabel?: string;
 }) {
 	if (value == null) {
 		return (
@@ -31,7 +33,7 @@ export function MoneyCell({
 					className,
 				)}
 			>
-				Missing data
+				{missingLabel}
 			</div>
 		);
 	}
@@ -69,10 +71,7 @@ export function MoneyCell({
 							originalCurrency ?? "EUR",
 							numFormatOpts,
 						)}
-						<span className="opacity-60">
-							{" "}
-							in {originalCurrency}
-						</span>
+						<span className="opacity-60"> in {originalCurrency}</span>
 					</p>
 				) : (
 					<p
