@@ -1,10 +1,8 @@
 use crate::db::Db;
 use crate::db::types::{InstrumentType, Replication};
-use crate::lookup::openfigi::{
-    ListingCandidate, guess_accumulating, guess_instrument_type, search_isin_listings,
-};
+use crate::lookup::openfigi::{ListingCandidate, search_isin_listings};
 use crate::lookup::yahoo::get_listing_meta;
-use crate::sync::yahoo::Meta;
+use crate::lookup::{guess_accumulating, guess_domicile, guess_instrument_type, guess_issuer};
 use crate::{
     AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_mic, sanitize_string, sanitize_ticker,
 };
@@ -294,6 +292,8 @@ pub struct ListingSearchResult {
     pub candidates: Vec<ListingCandidate>,
     pub instrument_type_hint: Option<InstrumentType>,
     pub accumulating_hint: Option<bool>,
+    pub domicile_hint: Option<String>,
+    pub issuer_hint: Option<String>,
 }
 
 #[tauri::command]
@@ -309,10 +309,17 @@ pub async fn find_listings_by_isin(
         .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
     let first = candidates.first();
+    let instrument_type_hint = first.and_then(guess_instrument_type);
+    let accumulating_hint = first.and_then(|item| guess_accumulating(&item.name));
+    // two requests for the same thing, bleh
+    let domicile_hint = guess_domicile(&isin, &instrument_type_hint, &http.client).await?;
+    let issuer_hint = guess_issuer(&isin, &http.client).await?;
 
     Ok(ListingSearchResult {
-        instrument_type_hint: first.and_then(guess_instrument_type),
-        accumulating_hint: first.and_then(|item| guess_accumulating(&item.name)),
+        instrument_type_hint,
+        accumulating_hint,
+        domicile_hint,
+        issuer_hint,
         candidates,
     })
 }

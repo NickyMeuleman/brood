@@ -199,6 +199,36 @@ const ListingAddPage = () => {
 		f.setFieldValue("listing.currency", listingMeta.currency);
 	}, [listingMeta, currencyPristine, f]);
 
+	// domicile
+	const domicilePristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.domicile"]?.isPristine,
+	);
+	useEffect(() => {
+		if (
+			isKnownInstrument ||
+			!domicilePristine ||
+			listingSearch?.domicile_hint == null
+		)
+			return;
+		f.setFieldValue("instrument.domicile", listingSearch?.domicile_hint);
+	}, [listingSearch, domicilePristine, isKnownInstrument, f]);
+
+	// issuer
+	const issuerPristine = useStore(
+		f.store,
+		(s) => s.fieldMeta["instrument.issuer"]?.isPristine,
+	);
+	useEffect(() => {
+		if (
+			isKnownInstrument ||
+			!issuerPristine ||
+			listingSearch?.issuer_hint == null
+		)
+			return;
+		f.setFieldValue("instrument.issuer", listingSearch?.issuer_hint);
+	}, [listingSearch, issuerPristine, isKnownInstrument, f]);
+
 	return (
 		<div className="m-auto mt-8 max-w-4xl p-4">
 			<div className="space-y-6">

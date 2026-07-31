@@ -1,4 +1,4 @@
-use crate::db::types::InstrumentType;
+use crate::{AppError, db::types::InstrumentType, lookup::gleif::search_gleif};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -163,35 +163,4 @@ fn build_candidate(mic: &str, data: FigiData) -> Option<ListingCandidate> {
         security_type_2: data.security_type_2,
         market_sector: data.market_sector,
     })
-}
-
-pub fn guess_instrument_type(candidate: &ListingCandidate) -> Option<InstrumentType> {
-    // Catch ETFs first (Bloomberg puts them in the "Equity" sector)
-    if candidate.security_type.as_deref() == Some("ETP") {
-        return Some(InstrumentType::Etf);
-    }
-
-    match candidate.market_sector.as_deref() {
-        Some("Equity" | "Pfd") => Some(InstrumentType::Stock),
-        Some("Govt" | "Corp" | "Mtge" | "Muni") => Some(InstrumentType::Bond),
-        _ => None,
-    }
-}
-
-pub fn guess_accumulating(name: &str) -> Option<bool> {
-    let name = name.to_uppercase();
-    let words: Vec<_> = name.split(|c: char| !c.is_alphanumeric()).collect();
-
-    let is_acc = words
-        .iter()
-        .any(|&w| matches!(w, "ACC" | "AC" | "ACCUMULATING"));
-    let is_dist = words
-        .iter()
-        .any(|&w| matches!(w, "DIS" | "DIST" | "DISTRIBUTING"));
-
-    match (is_acc, is_dist) {
-        (true, false) => Some(true),
-        (false, true) => Some(false),
-        _ => None,
-    }
 }
