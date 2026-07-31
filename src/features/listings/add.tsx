@@ -83,8 +83,11 @@ const ListingAddPage = () => {
 
 	const { data: mics = [] } = useMics();
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
-	const { data: listingSearch, isLoading: candidatesLoading } =
-		useListingCandidates(isin);
+	const {
+		data: listingSearch,
+		isLoading: candidatesLoading,
+		error: candidatesError,
+	} = useListingCandidates(isin);
 	const listingCandidates = listingSearch?.candidates ?? [];
 	const isKnownInstrument = !!instrumentLookup;
 	const { data: listingMeta, isLoading: listingMetaLoading } = useListingMeta(
@@ -256,7 +259,11 @@ const ListingAddPage = () => {
 								Looking up listings for this ISIN…
 							</p>
 						)}
-
+						{candidatesError && (
+							<p className="text-destructive text-sm">
+								{candidatesError.message}
+							</p>
+						)}
 						{listingCandidates.length > 0 ? (
 							<ListingCandidatesGrid
 								candidates={listingCandidates}
