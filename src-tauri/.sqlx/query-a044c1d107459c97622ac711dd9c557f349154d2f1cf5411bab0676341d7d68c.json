@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            ticker,\n            exchange_mic,\n            currency_code\n        FROM listing\n        WHERE id = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "ticker",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "exchange_mic",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "currency_code",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a044c1d107459c97622ac711dd9c557f349154d2f1cf5411bab0676341d7d68c"
+}

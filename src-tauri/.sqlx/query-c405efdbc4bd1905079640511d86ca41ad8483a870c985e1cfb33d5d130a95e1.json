@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO instrument\n            (isin,\n            name,\n            issuer,\n            instrument_type,\n            replication,\n            fsma_registered,\n            accumulating,\n            domicile,\n            subject_to_cgt)\n        VALUES\n            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c405efdbc4bd1905079640511d86ca41ad8483a870c985e1cfb33d5d130a95e1"
+}

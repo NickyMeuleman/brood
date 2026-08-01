@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            id                AS \"id!\",\n            isin              AS \"isin!\",\n            name              AS \"name!\",\n            issuer,\n            instrument_type   AS \"instrument_type!: InstrumentType\",\n            replication       AS \"replication: Replication\",\n            fsma_registered   AS \"fsma_registered!\",\n            accumulating      AS \"accumulating!\",\n            domicile,\n            subject_to_cgt    AS \"subject_to_cgt!\"\n        FROM instrument\n        WHERE isin = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "isin!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "issuer",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "instrument_type!: InstrumentType",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "replication: Replication",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "fsma_registered!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "accumulating!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "domicile",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "subject_to_cgt!",
+        "ordinal": 9,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "5d400c5095d46d5d0a888414c5eb9913d3b426c23ffb1cab17aa0c0ca3e4fea2"
+}

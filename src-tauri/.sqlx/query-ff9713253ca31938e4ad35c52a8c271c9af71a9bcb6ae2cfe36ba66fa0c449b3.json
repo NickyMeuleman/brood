@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO listing (\n            instrument_id,\n            exchange_mic,\n            ticker,\n            currency_code)\n        VALUES (?1, ?2, ?3, ?4)\n        RETURNING id as \"id!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "ff9713253ca31938e4ad35c52a8c271c9af71a9bcb6ae2cfe36ba66fa0c449b3"
+}

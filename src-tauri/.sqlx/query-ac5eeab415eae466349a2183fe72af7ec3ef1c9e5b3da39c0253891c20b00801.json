@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE instrument\n        SET \n          isin = ?1,\n          name = ?2,\n          issuer = ?3,\n          instrument_type = ?4, \n          replication = ?5,\n          fsma_registered = ?6,\n          accumulating = ?7, \n          domicile = ?8,\n          subject_to_cgt = ?9\n        WHERE id = ?10\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "ac5eeab415eae466349a2183fe72af7ec3ef1c9e5b3da39c0253891c20b00801"
+}
