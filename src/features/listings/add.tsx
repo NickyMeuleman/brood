@@ -71,9 +71,12 @@ const ListingAddPage = () => {
 				};
 			}
 
-			addListing.mutate(payload);
-			f.reset();
-			setIsEditingInstrument(false);
+			addListing.mutate(payload, {
+				onSuccess: () => {
+					f.reset();
+					setIsEditingInstrument(false);
+				},
+			});
 		},
 		formId: "listing_add_form",
 	});

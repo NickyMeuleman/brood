@@ -1,5 +1,4 @@
 import { useStore } from "@tanstack/react-form";
-import { useCallback, useEffect } from "react";
 import { QueryError } from "@/components/QueryError";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
@@ -23,7 +22,7 @@ const BuyPage = () => {
 			const parsed = buySchema.parse(value);
 			buy.mutate(parsed);
 		},
-		formId: "buyform",
+		formId: "buy_form",
 	});
 
 	const {
