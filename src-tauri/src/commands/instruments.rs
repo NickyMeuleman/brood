@@ -311,9 +311,21 @@ pub async fn find_listings_by_isin(
     let first = candidates.first();
     let instrument_type_hint = first.and_then(guess_instrument_type);
     let accumulating_hint = first.and_then(|item| guess_accumulating(&item.name));
-    // two requests for the same thing, bleh
-    let domicile_hint = guess_domicile(&isin, &instrument_type_hint, &http.client).await?;
-    let issuer_hint = guess_issuer(&isin, &http.client).await?;
+    // PERF: two requests for the same thing, bleh
+    let domicile_hint = match guess_domicile(&isin, &instrument_type_hint, &http.client).await {
+        Ok(hint) => hint,
+        Err(e) => {
+            eprintln!("Domicile hint lookup failed for {isin} (non-fatal): {e}");
+            None
+        }
+    };
+    let issuer_hint = match guess_issuer(&isin, &http.client).await {
+        Ok(hint) => hint,
+        Err(e) => {
+            eprintln!("Issuer hint lookup failed for {isin} (non-fatal): {e}");
+            None
+        }
+    };
 
     Ok(ListingSearchResult {
         instrument_type_hint,

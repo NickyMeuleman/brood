@@ -47,7 +47,10 @@ pub async fn guess_domicile(
     instrument_type: &Option<InstrumentType>,
     client: &Client,
 ) -> Result<Option<String>, AppError> {
-    if instrument_type == &Some(InstrumentType::Etf) {
+    if matches!(
+        instrument_type,
+        Some(InstrumentType::Etf) | Some(InstrumentType::Fund)
+    ) {
         let prefix = isin
             .get(0..2)
             .ok_or(AppError::Validation("ISIN format invalid".into()))?;
@@ -58,7 +61,7 @@ pub async fn guess_domicile(
     }
     let gleif_info = search_gleif(client, isin)
         .await
-        .map_err(|_| AppError::ExternalService("Domicile lookup failed".into()))?;
+        .map_err(|e| AppError::ExternalService(format!("GLEIF Domicile lookup failed: {e}")))?;
 
     Ok(Some(gleif_info.domicile))
 }
@@ -66,7 +69,7 @@ pub async fn guess_domicile(
 pub async fn guess_issuer(isin: &str, client: &Client) -> Result<Option<String>, AppError> {
     let gleif_info = search_gleif(client, isin)
         .await
-        .map_err(|_| AppError::ExternalService("Domicile lookup failed".into()))?;
+        .map_err(|e| AppError::ExternalService(format!("GLEIF Domicile lookup failed: {e}")))?;
 
     Ok(Some(gleif_info.legal_name))
 }
