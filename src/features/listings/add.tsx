@@ -1,5 +1,5 @@
 import { useStore } from "@tanstack/react-form";
-import { Pencil, RefreshCw } from "lucide-react";
+import { Pencil, RefreshCw, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
 	AddListingInput,
@@ -213,6 +213,20 @@ const ListingAddPage = () => {
 									>
 										<Pencil className="h-3.5 w-3.5" data-icon="inline-start" />
 										Enable Editing
+									</Button>
+								) : null}
+								{instrumentLookup && isEditingInstrument ? (
+									<Button
+										type="button"
+										size="sm"
+                    variant="secondary"
+										onClick={() => {
+											setIsEditingInstrument(false);
+											setInstrument(instrumentLookup);
+										}}
+									>
+										<Undo2 className="h-3.5 w-3.5" data-icon="inline-start" />
+										Reset
 									</Button>
 								) : null}
 							</FieldLegend>
