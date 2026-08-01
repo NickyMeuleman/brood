@@ -7,6 +7,7 @@ import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 import { useBrokerFee } from "@/hooks/use-broker-fee";
 import { useBuy } from "@/hooks/use-buy";
+import { useFieldHint } from "@/hooks/use-field-hint";
 import { useFx } from "@/hooks/use-fx";
 import { useListings } from "@/hooks/use-listings";
 import { usePrice } from "@/hooks/use-price";
@@ -57,47 +58,6 @@ const BuyPage = () => {
 		listing?.tob_rate_hint,
 		fxRate,
 	);
-
-	const tobPristine = useStore(f.store, (s) => s.fieldMeta.tob_fee?.isPristine);
-	const setTob = useCallback(
-		(v: string) => {
-			f.setFieldValue("tob_fee", v);
-			f.setFieldMeta("tob_fee", (prev) => ({
-				...prev,
-				isTouched: false,
-				isDirty: false,
-				isPristine: true,
-			}));
-		},
-		[f],
-	);
-	useEffect(() => {
-		if (!tobPristine || !tobHint) return;
-		setTob(tobHint);
-	}, [tobHint, tobPristine, setTob]);
-
-	const unitPricePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta.unit_price?.isPristine,
-	);
-	const setUnitPrice = useCallback(
-		(v: string) => {
-			f.setFieldValue("unit_price", v);
-			f.setFieldMeta("unit_price", (prev) => ({
-				...prev,
-				isTouched: false,
-				isDirty: false,
-				isPristine: true,
-			}));
-		},
-		[f],
-	);
-	useEffect(() => {
-		if (!unitPricePristine || !priceHint) return;
-		const v = Number(priceHint).toFixed(2);
-		setUnitPrice(v);
-	}, [priceHint, unitPricePristine, setUnitPrice]);
-
 	const { data: brokerFeeHint } = useBrokerFee(
 		"re=bel",
 		quantity,
@@ -106,27 +66,18 @@ const BuyPage = () => {
 		listing?.exchange_mic || "XAMS",
 		fxRate || "1",
 	);
-	const brokerFeePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta.broker_fee?.isPristine,
+
+	useFieldHint(
+		f,
+		"unit_price",
+		priceHint != null ? Number(priceHint).toFixed(2) : null,
 	);
-	const setBrokerFee = useCallback(
-		(v: string) => {
-			f.setFieldValue("broker_fee", v);
-			f.setFieldMeta("broker_fee", (prev) => ({
-				...prev,
-				isTouched: false,
-				isDirty: false,
-				isPristine: true,
-			}));
-		},
-		[f],
+	useFieldHint(
+		f,
+		"broker_fee",
+		brokerFeeHint != null ? Number(brokerFeeHint).toFixed(2) : null,
 	);
-	useEffect(() => {
-		if (!brokerFeePristine || !brokerFeeHint) return;
-		const v = Number(brokerFeeHint).toFixed(2);
-		setBrokerFee(v);
-	}, [brokerFeeHint, brokerFeePristine, setBrokerFee]);
+	useFieldHint(f, "tob_fee", tobHint);
 
 	const base = Number(quantity) * Number(unitPrice);
 

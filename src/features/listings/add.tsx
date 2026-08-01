@@ -28,6 +28,7 @@ import {
 } from "@/features/listings/shared-form";
 import { useAppForm } from "@/hooks/form";
 import { useAddListing } from "@/hooks/use-add-listing";
+import { useFieldHint } from "@/hooks/use-field-hint";
 import { useInstrumentLookup } from "@/hooks/use-instrument-lookup";
 import { useListingCandidates } from "@/hooks/use-listing-candidates";
 import { useListingMeta } from "@/hooks/use-listing-meta";
@@ -121,116 +122,34 @@ const ListingAddPage = () => {
 		setIsEditingInstrument(false);
 	}, [instrumentLookup, setInstrument]);
 
-	// instrument_type and accumulating
-	const instrumentTypePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.instrument_type"]?.isPristine,
-	);
-	const accumulatingPristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.accumulating"]?.isPristine,
-	);
-	useEffect(() => {
-		// a real stored fact always outranks a hint
-		if (isKnownInstrument || !listingSearch) return;
-
-		if (instrumentTypePristine && listingSearch.instrument_type_hint) {
-			f.setFieldValue(
-				"instrument.instrument_type",
-				listingSearch.instrument_type_hint,
-			);
-		}
-		if (accumulatingPristine && listingSearch.accumulating_hint != null) {
-			f.setFieldValue(
-				"instrument.accumulating",
-				listingSearch.accumulating_hint,
-			);
-		}
-	}, [
-		listingSearch,
-		instrumentTypePristine,
-		accumulatingPristine,
-		isKnownInstrument,
+	// isin based
+	useFieldHint(
 		f,
-	]);
-
-	// FIGI name (basic, only based on isin)
-	const namePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.name"]?.isPristine,
+		"instrument.instrument_type",
+		listingSearch?.instrument_type_hint,
+		{ enabled: !isKnownInstrument },
 	);
+	useFieldHint(f, "instrument.accumulating", listingSearch?.accumulating_hint, {
+		enabled: !isKnownInstrument,
+	});
+	useFieldHint(f, "instrument.domicile", listingSearch?.domicile_hint, {
+		enabled: !isKnownInstrument,
+	});
+	useFieldHint(f, "instrument.issuer", listingSearch?.issuer_hint, {
+		enabled: !isKnownInstrument,
+	});
+	useFieldHint(f, "instrument.name", listingCandidates[0]?.name, {
+		enabled: !isKnownInstrument,
+	});
 
-	useEffect(() => {
-		if (isKnownInstrument || !namePristine) return;
-		const name = listingCandidates?.[0]?.name;
-		if (name) {
-			f.setFieldValue("instrument.name", name);
-			f.setFieldMeta("instrument.name", (prev) => ({
-				...prev,
-				isTouched: false,
-				isDirty: false,
-				isPristine: true,
-			}));
-		}
-	}, [listingCandidates, namePristine, isKnownInstrument, f]);
-
-	// Yahoo name (better, based on ticker + mic)
-	useEffect(() => {
-		if (isKnownInstrument || !namePristine || !listingMeta?.name) return;
-		f.setFieldValue("instrument.name", listingMeta.name);
-	}, [listingMeta, namePristine, isKnownInstrument, f]);
-
-	// accumulating — second chance against the fuller name, same pristine gate
-	useEffect(() => {
-		if (
-			isKnownInstrument ||
-			!accumulatingPristine ||
-			listingMeta?.accumulating_hint == null
-		) {
-			return;
-		}
-		f.setFieldValue("instrument.accumulating", listingMeta.accumulating_hint);
-	}, [listingMeta, accumulatingPristine, isKnownInstrument, f]);
-
-	// currency
-	const currencyPristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["listing.currency"]?.isPristine,
-	);
-	useEffect(() => {
-		if (!currencyPristine || !listingMeta?.currency) return;
-		f.setFieldValue("listing.currency", listingMeta.currency);
-	}, [listingMeta, currencyPristine, f]);
-
-	// domicile
-	const domicilePristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.domicile"]?.isPristine,
-	);
-	useEffect(() => {
-		if (
-			isKnownInstrument ||
-			!domicilePristine ||
-			listingSearch?.domicile_hint == null
-		)
-			return;
-		f.setFieldValue("instrument.domicile", listingSearch?.domicile_hint);
-	}, [listingSearch, domicilePristine, isKnownInstrument, f]);
-
-	// issuer
-	const issuerPristine = useStore(
-		f.store,
-		(s) => s.fieldMeta["instrument.issuer"]?.isPristine,
-	);
-	useEffect(() => {
-		if (
-			isKnownInstrument ||
-			!issuerPristine ||
-			listingSearch?.issuer_hint == null
-		)
-			return;
-		f.setFieldValue("instrument.issuer", listingSearch?.issuer_hint);
-	}, [listingSearch, issuerPristine, isKnownInstrument, f]);
+	// ticker/mic based - better hints, can replace untouched hints that are already present
+	useFieldHint(f, "instrument.name", listingMeta?.name, {
+		enabled: !isKnownInstrument,
+	});
+	useFieldHint(f, "instrument.accumulating", listingMeta?.accumulating_hint, {
+		enabled: !isKnownInstrument,
+	});
+	useFieldHint(f, "listing.currency", listingMeta?.currency);
 
 	return (
 		<div className="m-auto mt-8 max-w-4xl p-4">
