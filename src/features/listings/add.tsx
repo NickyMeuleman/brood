@@ -84,6 +84,10 @@ const ListingAddPage = () => {
 	const isin = useStore(f.store, (s) => s.values.isin);
 	const mic = useStore(f.store, (s) => s.values.listing.mic);
 	const ticker = useStore(f.store, (s) => s.values.listing.ticker);
+	const instrument_type = useStore(
+		f.store,
+		(s) => s.values.instrument.instrument_type,
+	) as InstrumentType;
 
 	const { data: mics = [] } = useMics();
 	const { data: instrumentLookup } = useInstrumentLookup(isin);
@@ -219,7 +223,7 @@ const ListingAddPage = () => {
 									<Button
 										type="button"
 										size="sm"
-                    variant="secondary"
+										variant="secondary"
 										onClick={() => {
 											setIsEditingInstrument(false);
 											setInstrument(instrumentLookup);
@@ -257,18 +261,20 @@ const ListingAddPage = () => {
 										/>
 									)}
 								</f.AppField>
-								<f.AppField name="instrument.replication">
-									{(field) => (
-										<field.SelectField
-											label="Replication"
-											options={Object.entries(REPLICATIONS).map(([k, v]) => ({
-												value: k as Replication,
-												label: v,
-											}))}
-											placeholder="Replication method"
-										/>
-									)}
-								</f.AppField>
+								{instrument_type === "ETF" ? (
+									<f.AppField name="instrument.replication">
+										{(field) => (
+											<field.SelectField
+												label="Replication"
+												options={Object.entries(REPLICATIONS).map(([k, v]) => ({
+													value: k as Replication,
+													label: v,
+												}))}
+												placeholder="Replication method"
+											/>
+										)}
+									</f.AppField>
+								) : null}
 
 								<FieldGroup className="col-span-full">
 									<f.AppField name="instrument.fsma_registered">
