@@ -378,3 +378,16 @@ pub fn sanitize_domicile(val: &str) -> Result<String, AppError> {
     }
     Ok(cleaned)
 }
+
+/// ISO 4217
+/// https://nl.wikipedia.org/wiki/ISO_4217
+pub fn sanitize_currency(val: &str) -> Result<String, AppError> {
+    let cleaned = val.trim().to_uppercase();
+    if cleaned.len() != 3 {
+        return Err(AppError::Validation("Currency must be 3 characters".into()));
+    }
+    if !cleaned.chars().all(|c| c.is_ascii_uppercase()) {
+        return Err(AppError::Validation("Malformed currency".into()));
+    }
+    Ok(cleaned)
+}

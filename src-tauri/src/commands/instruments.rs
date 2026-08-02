@@ -4,7 +4,8 @@ use crate::lookup::openfigi::{ListingCandidate, search_isin_listings};
 use crate::lookup::yahoo::get_listing_meta;
 use crate::lookup::{guess_accumulating, guess_domicile, guess_instrument_type, guess_issuer};
 use crate::{
-    AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_mic, sanitize_string, sanitize_ticker,
+    AppError, HttpClient, SUPPORTED_EXCHANGES, isin, sanitize_currency, sanitize_domicile,
+    sanitize_mic, sanitize_string, sanitize_ticker,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -151,7 +152,7 @@ async fn add_instrument(
         .issuer
         .map(|issuer| sanitize_string(&issuer, "issuer"))
         .transpose()?;
-    let domicile = sanitize_string(&instrument.domicile, "domicile")?;
+    let domicile = sanitize_domicile(&instrument.domicile)?;
 
     sqlx::query_scalar!(
         r#"
@@ -201,7 +202,7 @@ async fn update_instrument(
         .issuer
         .map(|issuer| sanitize_string(&issuer, "issuer"))
         .transpose()?;
-    let domicile = sanitize_string(&instrument.domicile, "domicile")?;
+    let domicile = sanitize_domicile(&instrument.domicile)?;
 
     let rows = sqlx::query!(
         r#"
@@ -248,7 +249,7 @@ async fn add_listing(
 ) -> Result<i64, AppError> {
     let mic = sanitize_mic(&listing.mic)?;
     let ticker = sanitize_ticker(&listing.ticker)?;
-    let currency_code = sanitize_string(&listing.currency, "currency")?.to_uppercase();
+    let currency_code = sanitize_currency(&listing.currency)?;
 
     sqlx::query!(
         r#"

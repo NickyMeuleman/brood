@@ -7,7 +7,7 @@ const isinValidator = z
 	.length(12, { abort: true })
 	.regex(/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/, {
 		message:
-			"ISIN must be 2 letters, 9 letters/digits, then 1 digit. Letters must be capital.",
+			"Must be 2 letters, 9 letters/digits, then 1 digit. Letters must be capital.",
 		abort: true,
 	})
 	.refine((val) => isValidLuhn(val), {
@@ -70,14 +70,27 @@ const instrumentFieldsSchema = z.object({
 		.transform((v) => (v === "" ? null : v)),
 	fsma_registered: z.boolean(),
 	accumulating: z.boolean(),
-	domicile: z.string().trim(),
+	domicile: z
+		.string()
+		.trim()
+		.length(2)
+		.uppercase()
+		.regex(
+			/^[A-Z]{2}$/,
+			"Must be a 2 capital letter country code (ISO 3166-1 alpha-2)",
+		),
 	subject_to_cgt: z.boolean(),
 });
 
 const listingFieldsSchema = z.object({
 	ticker: z.string().uppercase().min(1, "Required"),
 	mic: z.string().uppercase().min(1, "Choose an exchange"),
-	currency: z.string().uppercase().min(1, "Required"),
+	currency: z
+		.string()
+		.trim()
+		.length(3)
+		.uppercase()
+		.regex(/^[A-Z]{3}$/, "Must be a 3 capital letter currency code (ISO 4217)"),
 });
 
 export const listingAddSchema = z.object({
