@@ -28,7 +28,7 @@ import {
 } from "@/features/listings/shared-form";
 import { useAppForm } from "@/hooks/form";
 import { useAddListing } from "@/hooks/use-add-listing";
-import { setFieldHint, useFieldHint } from "@/hooks/use-field-hint";
+import { applyHint, setFieldHint, useFieldHint } from "@/hooks/use-field-hint";
 import { useInstrumentLookup } from "@/hooks/use-instrument-lookup";
 import { useListingCandidates } from "@/hooks/use-listing-candidates";
 import { useListingMeta } from "@/hooks/use-listing-meta";
@@ -110,14 +110,14 @@ const ListingAddPage = () => {
 	const setInstrument = useCallback(
 		(v: typeof instrumentLookup) => {
 			if (!v) return;
-			setFieldHint(f, "instrument.name", v.name);
-			setFieldHint(f, "instrument.issuer", v.issuer ?? "");
-			setFieldHint(f, "instrument.instrument_type", v.instrument_type);
-			setFieldHint(f, "instrument.replication", v.replication ?? "");
-			setFieldHint(f, "instrument.fsma_registered", v.fsma_registered);
-			setFieldHint(f, "instrument.accumulating", v.accumulating);
-			setFieldHint(f, "instrument.domicile", v.domicile ?? "");
-			setFieldHint(f, "instrument.subject_to_cgt", v.subject_to_cgt);
+			applyHint(f, "instrument.name", v.name);
+			applyHint(f, "instrument.issuer", v.issuer ?? "");
+			applyHint(f, "instrument.instrument_type", v.instrument_type);
+			applyHint(f, "instrument.replication", v.replication ?? "");
+			applyHint(f, "instrument.fsma_registered", v.fsma_registered);
+			applyHint(f, "instrument.accumulating", v.accumulating);
+			applyHint(f, "instrument.domicile", v.domicile ?? "");
+			applyHint(f, "instrument.subject_to_cgt", v.subject_to_cgt);
 		},
 		[f],
 	);

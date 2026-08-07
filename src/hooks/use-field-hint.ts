@@ -26,7 +26,7 @@ export interface FieldHintOptions {
 	enabled?: boolean;
 }
 
-function applyHint<TFormData, TName extends DeepKeys<TFormData>>(
+export function applyHint<TFormData, TName extends DeepKeys<TFormData>>(
 	form: AnyFormApi<TFormData>,
 	name: TName,
 	value: DeepValue<TFormData, TName>,
