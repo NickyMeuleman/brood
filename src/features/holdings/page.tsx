@@ -1,11 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useMemo } from "react";
 import { QueryError } from "@/components/QueryError.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
-import { getErrorMessage } from "@/lib/errors.ts";
-import { queryKeys } from "@/lib/queryKeys.ts";
+import { useHoldings } from "@/hooks/use-holdings.ts";
 import {
 	cn,
 	formatCurrency,
@@ -13,7 +11,6 @@ import {
 	PERIOD_LABEL,
 } from "@/lib/utils.ts";
 import { useUIStore } from "@/stores/ui.ts";
-import { commands } from "../../bindings.ts";
 import { columns } from "./columns.tsx";
 import { DataTable } from "./data-table.tsx";
 import { normalizeHolding } from "./lib.ts";
@@ -22,15 +19,7 @@ import { PortfolioChart } from "./PortfolioChart.tsx";
 const HoldingsPage = () => {
 	const { includeFees, displayInEur, period } = useUIStore();
 
-	const { data, isLoading, error } = useQuery({
-		queryKey: queryKeys.holdingsByPeriod(period),
-		queryFn: async () => {
-			const res = await commands.getHoldings(period);
-			if (res.status === "error") throw new Error(getErrorMessage(res.error));
-			return res.data;
-		},
-	});
-
+	const { data, isLoading, error } = useHoldings(period);
 	const tableData = useMemo(
 		() =>
 			data?.holdings.map((h) =>
