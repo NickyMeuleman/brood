@@ -9,12 +9,14 @@ import { SubmitButton } from "@/components/SubmitButton.tsx";
 import { SwitchField } from "@/components/SwitchField.tsx";
 import { TextField } from "@/components/TextField.tsx";
 import { fieldContext, formContext } from "./form-context.tsx";
+import { HoldingPicker } from "@/components/HoldingPicker.tsx";
 
 export const { useAppForm } = createFormHook({
 	fieldComponents: {
 		TextField,
 		NumberField,
 		ListingPicker,
+    HoldingPicker,
 		ExchangePicker,
 		DecimalField,
 		DateTimeField,

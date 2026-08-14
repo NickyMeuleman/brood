@@ -37,4 +37,22 @@ export const queryKeys = {
 	listingCandidates: (isin: string) => ["listingCandidates", isin] as const,
 	listingMeta: (mic: string, ticker: string) =>
 		["listingMeta", mic, ticker] as const,
+	sellPreview: ["sellPreview"] as const,
+	sellPreviewFor: (
+		listingId: number,
+		quantity: string,
+		unitPrice: string,
+		executedAt: string,
+		brokerFee: string,
+		tobFee: string,
+	) =>
+		[
+			"sellPreview",
+			listingId,
+			quantity,
+			unitPrice,
+			executedAt,
+			brokerFee,
+			tobFee,
+		] as const,
 };
