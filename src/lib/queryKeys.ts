@@ -37,6 +37,8 @@ export const queryKeys = {
 	listingCandidates: (isin: string) => ["listingCandidates", isin] as const,
 	listingMeta: (mic: string, ticker: string) =>
 		["listingMeta", mic, ticker] as const,
+	heldPositions: ["heldPositions"] as const,
+	heldPositionsAsOf: (asOf: string) => ["heldPositions", asOf] as const,
 	sellPreview: ["sellPreview"] as const,
 	sellPreviewFor: (
 		listingId: number,

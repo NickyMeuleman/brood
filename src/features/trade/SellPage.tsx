@@ -1,4 +1,5 @@
 import { useStore } from "@tanstack/react-form";
+import { useMemo } from "react";
 import { QueryError } from "@/components/QueryError";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
@@ -10,12 +11,14 @@ import { useAppForm } from "@/hooks/form";
 import { useBrokerFee } from "@/hooks/use-broker-fee";
 import { useFieldHint } from "@/hooks/use-field-hint";
 import { useFx } from "@/hooks/use-fx";
-import { useHoldings } from "@/hooks/use-holdings";
+import { useHeldPositions } from "@/hooks/use-held-positions";
+import { useListings } from "@/hooks/use-listings";
 import { usePrice } from "@/hooks/use-price";
 import { useSell } from "@/hooks/use-sell";
 import { useSellPreview } from "@/hooks/use-sell-preview";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { formatCurrency } from "@/lib/utils";
+import type { SellableHolding } from "./types";
 
 const SellPage = () => {
 	const sell = useSell();
@@ -30,12 +33,6 @@ const SellPage = () => {
 		formId: "sell_form",
 	});
 
-	const {
-		data: { holdings = [] } = {},
-		isLoading: holdingsLoading,
-		error: holdingsError,
-	} = useHoldings("AllTime");
-
 	const listingId = useStore(f.store, (state) => state.values.listing_id);
 	const quantity = useStore(f.store, (state) => state.values.quantity);
 	const unitPrice = useStore(f.store, (state) => state.values.unit_price);
@@ -43,10 +40,33 @@ const SellPage = () => {
 	const brokerFee = useStore(f.store, (state) => state.values.broker_fee);
 	const tobFee = useStore(f.store, (state) => state.values.tob_fee);
 
-	const holding = holdings.find((h) => h.listing_id === listingId);
+	const {
+		data: heldPositions,
+		isLoading: heldPositionsLoading,
+		error: heldPositionsError,
+	} = useHeldPositions(executedAt);
+	const { data: listings = [] } = useListings();
+
+	const sellableHoldings = useMemo<SellableHolding[]>(() => {
+		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
+		return (heldPositions ?? []).map((p) => ({
+			...p,
+			tob_rate_hint: tobByIsin.get(p.isin) ?? null,
+		}));
+	}, [heldPositions, listings]);
+
+	const holding = sellableHoldings.find((h) => h.listing_id === listingId);
 	const listingCurrency = holding?.currency_code;
 	const isForeignCurrency = Boolean(
 		listingCurrency && listingCurrency !== "EUR",
+	);
+
+	// when the date changes, the selected listing might not be held,
+	// set the quantity to 0 then, this ensures a validation error
+	const maxQty = listingId > 0 ? (holding?.quantity ?? "0") : undefined;
+	const quantitySchema = useMemo(
+		() => buildSellSchema(maxQty).shape.quantity,
+		[maxQty],
 	);
 
 	const {
@@ -59,9 +79,7 @@ const SellPage = () => {
 		quantity,
 		unitPrice,
 		"sell",
-		// TODO: expose tob_rate_hint
-		// holding?.tob_rate_hint,
-		null,
+		holding?.tob_rate_hint,
 		fxRate,
 	);
 	const { data: brokerFeeHint } = useBrokerFee(
@@ -110,10 +128,14 @@ const SellPage = () => {
 		tob_fee: tobFee,
 	});
 
+	// TODO: persist listing choice if possible when time changes (and thus sellableHoldings is recalculated)
+
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
 			<div className="space-y-6 lg:col-span-2">
-				{holdingsError ? <QueryError message={holdingsError.message} /> : null}
+				{heldPositionsError ? (
+					<QueryError message={heldPositionsError.message} />
+				) : null}
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
@@ -125,8 +147,8 @@ const SellPage = () => {
 							{(field) => (
 								<field.HoldingPicker
 									label="Holding"
-									holdings={holdings}
-									isLoading={holdingsLoading}
+									holdings={sellableHoldings}
+									isLoading={heldPositionsLoading}
 								/>
 							)}
 						</f.AppField>

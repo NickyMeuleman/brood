@@ -1,4 +1,3 @@
-import type { HoldingPayload } from "@/bindings";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
 	Select,
@@ -9,6 +8,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { TruncatedTooltip } from "@/features/holdings/TruncatedTooltip";
+import type { SellableHolding } from "@/features/trade/types";
 import { useFieldContext } from "@/hooks/form-context";
 import { cn, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
 import { Badge } from "./ui/badge";
@@ -19,7 +19,7 @@ export const HoldingPicker = ({
 	isLoading,
 }: {
 	label: string;
-	holdings: HoldingPayload[];
+	holdings: SellableHolding[];
 	isLoading: boolean;
 }) => {
 	const field = useFieldContext<number>();
@@ -48,13 +48,12 @@ export const HoldingPicker = ({
 							const exchangeLabel = MIC_LABEL[h.exchange_mic] ?? h.exchange_mic;
 							const currencySymbol = getCurrencySymbol(h.currency_code);
 							const isForeignCurrency = h.currency_code !== "EUR";
-							console.log(h);
 
 							return (
 								<SelectItem key={h.listing_id} value={h.listing_id}>
 									<div className="flex w-full items-center gap-3">
 										<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-											<TruncatedTooltip>{h.name}</TruncatedTooltip>
+											<TruncatedTooltip>{h.instrument_name}</TruncatedTooltip>
 											<div className="flex items-center gap-1.5 whitespace-nowrap font-normal text-muted-foreground text-sm">
 												<Badge
 													variant="ghost"
@@ -73,7 +72,7 @@ export const HoldingPicker = ({
 													</>
 												)}
 												<span className="opacity-60">·</span>
-												<span>{h.current.quantity} held</span>
+												<span>{h.quantity} held</span>
 											</div>
 										</div>
 									</div>

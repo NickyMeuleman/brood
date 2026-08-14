@@ -49,7 +49,7 @@ export const buildSellSchema = (maxQty?: string) =>
 		listing_id: z.int().positive("Choose a holding"),
 		quantity: positiveDecimal.refine(
 			(v) => maxQty === undefined || Number(v) <= Number(maxQty),
-			"Cannot exceed the amount you currently hold",
+			"Cannot exceed the amount you held at the selected execution time.",
 		),
 		executed_at: z.iso.datetime(),
 		unit_price: positiveDecimal,
