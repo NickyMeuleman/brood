@@ -49,11 +49,38 @@ const SellPage = () => {
 
 	const sellableHoldings = useMemo<SellableHolding[]>(() => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
-		return (heldPositions ?? []).map((p) => ({
-			...p,
-			tob_rate_hint: tobByIsin.get(p.isin) ?? null,
-		}));
-	}, [heldPositions, listings]);
+		const candidates = new Map<number, SellableHolding>();
+
+		for (const p of heldPositions ?? []) {
+			candidates.set(p.listing_id, {
+				...p,
+				tob_rate_hint: tobByIsin.get(p.isin) ?? null,
+			});
+		}
+
+		if (listingId > 0 && !candidates.has(listingId)) {
+			const listing = listings.find((l) => l.id === listingId);
+			if (listing) {
+				candidates.set(listingId, {
+					listing_id: listing.id,
+					isin: listing.isin,
+					ticker: listing.ticker,
+					exchange_mic: listing.exchange_mic,
+					currency_code: listing.currency_code,
+					instrument_name: listing.instrument_name,
+					instrument_type: listing.instrument_type,
+					// Only assert a confirmed zero once the query for this date has
+					// actually resolved and still doesn't have this listing. While it's
+					// still loading, leave it unknown rather than flashing "not held."
+					quantity: heldPositionsLoading ? null : "0",
+					tob_rate_hint: listing.tob_rate_hint,
+				});
+			}
+		}
+		return [...candidates.values()].sort((a, b) =>
+			a.ticker.localeCompare(b.ticker),
+		);
+	}, [heldPositions, listings, listingId, heldPositionsLoading]);
 
 	const holding = sellableHoldings.find((h) => h.listing_id === listingId);
 	const listingCurrency = holding?.currency_code;
