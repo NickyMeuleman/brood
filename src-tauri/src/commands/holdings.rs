@@ -6,7 +6,7 @@ use crate::commands::{
 use crate::db::Db;
 use crate::db::types::InstrumentType;
 use crate::{AppError, parse_decimal_internal};
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use specta::Type;
@@ -328,7 +328,7 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
         // For CA lots this correctly uses the original trade date (propagated
         // through the parent chain), not the CA effective date.
         let acq_during_period = period_start_date
-            .map(|start| lot.acquisition_date >= start)
+            .map(|start| lot.acquisition_datetime.date() >= start)
             // all lots are "new" for "AllTime"
             .unwrap_or(true);
 
@@ -341,8 +341,8 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
 
         h.earliest_acquisition = h
             .earliest_acquisition
-            .map(|existing| existing.min(lot.acquisition_date))
-            .or(Some(lot.acquisition_date));
+            .map(|existing| existing.min(lot.acquisition_datetime.date()))
+            .or(Some(lot.acquisition_datetime.date()));
 
         if acq_during_period {
             h.period.cost.local += cost_local;
@@ -403,4 +403,52 @@ pub async fn get_holdings(db: State<'_, Db>, period: Period) -> Result<HoldingsR
         holdings: holding_payloads,
         totals,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct HeldPosition {
+    pub listing_id: i64,
+    pub isin: String,
+    pub ticker: String,
+    pub exchange_mic: String,
+    pub currency_code: String,
+    pub instrument_name: String,
+    pub instrument_type: InstrumentType,
+    pub quantity: Decimal,
+}
+
+/// Point-in-time holdings.
+/// Separate from `get_holdings`:
+/// that command assumes `today` as end-time, and shows performance for a chosen period
+#[tauri::command]
+#[specta::specta]
+pub async fn get_held_positions(
+    db: State<'_, Db>,
+    as_of: DateTime<Utc>,
+) -> Result<Vec<HeldPosition>, AppError> {
+    let as_of_date = as_of.naive_utc().date();
+    let lot_records = load_lot_records(&db.pool).await?;
+
+    let mut acc: HashMap<i64, HeldPosition> = HashMap::new();
+    for lot in lot_records.iter().filter(|l| l.is_active_at(as_of_date)) {
+        acc.entry(lot.listing_id)
+            .or_insert_with(|| HeldPosition {
+                listing_id: lot.listing_id,
+                isin: lot.isin.clone(),
+                ticker: lot.ticker.clone(),
+                exchange_mic: lot.exchange_mic.clone(),
+                currency_code: lot.currency_code.clone(),
+                instrument_name: lot.name.clone(),
+                instrument_type: lot.instrument_type.clone(),
+                quantity: Decimal::ZERO,
+            })
+            .quantity += lot.qty_remaining_at(as_of_date);
+    }
+
+    let mut positions: Vec<HeldPosition> = acc
+        .into_values()
+        .filter(|p| p.quantity > Decimal::ZERO)
+        .collect();
+    positions.sort_unstable_by(|a, b| a.ticker.cmp(&b.ticker));
+    Ok(positions)
 }
