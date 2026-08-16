@@ -1,5 +1,6 @@
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { QueryError } from "@/components/QueryError";
 import { Badge } from "@/components/ui/badge";
 import { FieldGroup } from "@/components/ui/field";
@@ -28,9 +29,15 @@ const SellPage = () => {
 	const f = useAppForm({
 		...sellFormOpts,
 		onSubmit: ({ value }) => {
-			const schema = buildSellSchema(undefined);
-			const parsed = schema.parse(value);
-			sell.mutate(parsed);
+			const schema = buildSellSchema(maxQty);
+			const parsed = schema.safeParse(value);
+			if (!parsed.success) {
+				toast.error("Sell form submitted with invalid data", {
+					description: parsed.error.message,
+				});
+				return;
+			}
+			sell.mutate(parsed.data);
 		},
 		formId: "sell_form",
 	});
@@ -71,9 +78,7 @@ const SellPage = () => {
 					currency_code: listing.currency_code,
 					instrument_name: listing.instrument_name,
 					instrument_type: listing.instrument_type,
-					// Only assert a confirmed zero once the query for this date has
-					// actually resolved and still doesn't have this listing. While it's
-					// still loading, leave it unknown rather than flashing "not held."
+					// 0 is confirmed not held, null is unknown (while loading)
 					quantity: heldPositionsLoading ? null : "0",
 					tob_rate_hint: listing.tob_rate_hint,
 				});
@@ -90,9 +95,7 @@ const SellPage = () => {
 		listingCurrency && listingCurrency !== "EUR",
 	);
 
-	// when the date changes, the selected listing might not be held,
-	// set the quantity to 0 then, this ensures a validation error
-	const maxQty = listingId > 0 ? (holding?.quantity ?? "0") : undefined;
+	const maxQty = holding?.quantity ?? undefined;
 	const quantitySchema = useMemo(
 		() => buildSellSchema(maxQty).shape.quantity,
 		[maxQty],
@@ -158,11 +161,9 @@ const SellPage = () => {
 	});
 
 	useEffect(() => {
-		if (!heldPositionsLoading) {
-			if (!f.getFieldMeta("quantity")?.isPristine) {
-				f.validateField("quantity", "change");
-			}
-		}
+		if (heldPositionsLoading) return;
+		if (f.getFieldMeta("quantity")?.isPristine) return;
+		f.validateField("quantity", "change");
 	}, [heldPositionsLoading, f]);
 
 	return (
@@ -249,14 +250,14 @@ const SellPage = () => {
 										<span>
 											{MIC_LABEL[holding.exchange_mic] ?? holding.exchange_mic}
 										</span>
-										{holding.currency_code !== "EUR" && (
+										{isForeignCurrency && (
 											<>
 												<span className="opacity-60">·</span>
 												<span>{getCurrencySymbol(holding.currency_code)}</span>
 											</>
 										)}
 										<span className="opacity-60">·</span>
-										<span>{holding.quantity} held</span>
+										<span>{holding.quantity ?? "..."} held</span>
 									</div>
 								</div>
 							)}
