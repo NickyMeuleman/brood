@@ -1,6 +1,7 @@
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useMemo } from "react";
 import { QueryError } from "@/components/QueryError";
+import { Badge } from "@/components/ui/badge";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -17,7 +18,8 @@ import { usePrice } from "@/hooks/use-price";
 import { useSell } from "@/hooks/use-sell";
 import { useSellPreview } from "@/hooks/use-sell-preview";
 import { useTobHint } from "@/hooks/use-tob-hint";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
+import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
 import type { SellableHolding } from "./types";
 
 const SellPage = () => {
@@ -143,7 +145,7 @@ const SellPage = () => {
 
 	const total =
 		convertedBase !== null
-			? convertedBase + Number(brokerFee) + Number(tobFee)
+			? convertedBase - Number(brokerFee) - Number(tobFee)
 			: null;
 
 	const preview = useSellPreview({
@@ -229,7 +231,37 @@ const SellPage = () => {
 			<div className="flex flex-col gap-6">
 				<div className="flex flex-col gap-4 rounded-md bg-muted p-6">
 					<div className="space-y-4">
-						<p className="font-semibold text-lg">Price Summary</p>
+						<p className="font-semibold text-lg">Sale Summary</p>
+						<div className="flex w-full items-center gap-3">
+							{holding && (
+								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+									<TruncatedTooltip>{holding.instrument_name}</TruncatedTooltip>
+									<div className="flex items-center gap-1.5 whitespace-nowrap font-normal text-muted-foreground text-sm">
+										<Badge
+											variant="ghost"
+											className={cn(
+												"bg-primary font-mono text-primary-foreground text-sm tracking-wider",
+											)}
+										>
+											{holding.ticker}
+										</Badge>
+										<span className="opacity-60">·</span>
+										<span>
+											{MIC_LABEL[holding.exchange_mic] ?? holding.exchange_mic}
+										</span>
+										{holding.currency_code !== "EUR" && (
+											<>
+												<span className="opacity-60">·</span>
+												<span>{getCurrencySymbol(holding.currency_code)}</span>
+											</>
+										)}
+										<span className="opacity-60">·</span>
+										<span>{holding.quantity} held</span>
+									</div>
+								</div>
+							)}
+						</div>
+
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">Base</span>
 							<span className="font-semibold text-base">
@@ -248,14 +280,14 @@ const SellPage = () => {
 							<span className="text-base text-muted-foreground">
 								Broker fee
 							</span>
-							<span className="font-semibold text-base">
-								{formatCurrency(Number(brokerFee))}
+							<span className="font-semibold text-base text-rose-700">
+								{formatCurrency(Number(brokerFee) * -1)}
 							</span>
 						</div>
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">TOB</span>
-							<span className="font-semibold text-base">
-								{formatCurrency(Number(tobFee))}
+							<span className="font-semibold text-base text-rose-700">
+								{formatCurrency(Number(tobFee) * -1)}
 							</span>
 						</div>
 					</div>
