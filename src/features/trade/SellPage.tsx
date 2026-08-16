@@ -1,5 +1,5 @@
 import { useStore } from "@tanstack/react-form";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { QueryError } from "@/components/QueryError";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
@@ -155,7 +155,13 @@ const SellPage = () => {
 		tob_fee: tobFee,
 	});
 
-	// TODO: persist listing choice if possible when time changes (and thus sellableHoldings is recalculated)
+	useEffect(() => {
+		if (!heldPositionsLoading) {
+			if (!f.getFieldMeta("quantity")?.isPristine) {
+				f.validateField("quantity", "change");
+			}
+		}
+	}, [heldPositionsLoading, f]);
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
@@ -183,7 +189,13 @@ const SellPage = () => {
 							{(field) => <field.DateTimeField label="Execution time" />}
 						</f.AppField>
 						<div className="grid grid-cols-2 gap-6">
-							<f.AppField name="quantity">
+							<f.AppField
+								name="quantity"
+								validators={{
+									onChange: quantitySchema,
+									onChangeListenTo: ["listing_id", "executed_at"],
+								}}
+							>
 								{(field) => <field.DecimalField label="Quantity" />}
 							</f.AppField>
 							<f.AppField name="unit_price">
