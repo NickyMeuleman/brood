@@ -15,6 +15,7 @@ pub struct LotRecord {
     // --- identity (used by get_holdings for table rows) ---
     pub id: i64,
     pub listing_id: i64,
+    pub instrument_id: i64,
     pub isin: String,
     pub name: String,
     pub ticker: String,
@@ -25,6 +26,11 @@ pub struct LotRecord {
     // --- lot facts ---
     pub qty_at_acquisition: Decimal,
     pub price_per_unit: Decimal, // in listing currency
+
+    // --- custody ---
+    pub broker_id_at_acquisition: i64,
+    /// Sorted by ascending date: (date, to broker_id)
+    pub transfers: Vec<(NaiveDate, i64)>,
 
     // --- timeline ---
     /// When this lot first became an active position.
@@ -93,6 +99,17 @@ impl LotRecord {
         }
         self.fees.local * (qty / self.qty_at_acquisition)
     }
+
+    /// broker_id after transfers (if any)
+    /// transfers has to be sorted chronologically
+    pub fn broker_id_as_of(&self, date: NaiveDate) -> i64 {
+        self.transfers
+            .iter()
+            .rev()
+            .find(|(d, _)| *d <= date)
+            .map(|(_, b)| *b)
+            .unwrap_or(self.broker_id_at_acquisition)
+    }
 }
 
 // Both converted at the trade's execution date. At the moment the fee was actually paid.
@@ -116,7 +133,7 @@ struct TradeFeeAgg {
 /// `get_portfolio_history` require. Callers receive a flat `Vec<LotRecord>` and
 /// apply date-based filtering with [`LotRecord::is_active_at`].
 pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, AppError> {
-    // ---- 1. All lots -------------------------------------------------------
+    // ---- All lots -------------------------------------------------------
     // ORDER BY l.id ASC is vital for handling child CA lots topologically!
     // all lots, needed because some open lots (CA-originated lots) lack info about the time of the
     // price_per_unit at original acquisition time.
@@ -128,6 +145,8 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         SELECT
             l.id AS lot_id,
             l.listing_id,
+            l.instrument_id,
+            l.broker_id_at_acquisition,
             l.parent_lot_id,
             l.source_trade_id, 
             l.source_ca_id,
@@ -155,7 +174,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         return Ok(vec![]);
     }
 
-    // ---- 2. lot_close dates ------------------------------------------------
+    // ---- lot_close dates ------------------------------------------------
     let lot_close_dates: HashMap<i64, NaiveDate> = sqlx::query!(
         r#"
         SELECT
@@ -170,7 +189,29 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     .map(|r| (r.lot_id, r.closed_at.date()))
     .collect();
 
-    // ---- 3. CA effective dates (existence_start for CA-originated lots) -----
+    // ---- lot_transfer history (for per-broker FIFO scoping) --------
+    let transfer_rows = sqlx::query!(
+        r#"
+        SELECT
+            lot_id,
+            to_broker_id,
+            transferred_at AS "transferred_at: NaiveDateTime"
+        FROM lot_transfer
+        ORDER BY lot_id, transferred_at ASC
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut transfers_by_lot: HashMap<i64, Vec<(NaiveDate, i64)>> = HashMap::new();
+    for row in transfer_rows {
+        transfers_by_lot
+            .entry(row.lot_id)
+            .or_default()
+            .push((row.transferred_at.date(), row.to_broker_id));
+    }
+
+    // ---- CA effective dates (existence_start for CA-originated lots) -----
     let ca_start_dates: HashMap<i64, NaiveDate> = sqlx::query!(
         r#"
         SELECT
@@ -187,12 +228,10 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     .map(|r| (r.lot_id, r.effective_date))
     .collect();
 
-    // ---- 4. Full FX rate history -------------------------------------------
-    // Loaded in full so that fee computation (step 5) and acquisition FX rate
-    // resolution (step 8) can both use latest_on_or_before without further
-    // database round-trips.
+    // ---- Full FX rate history -------------------------------------------
     let all_rates = get_rates(pool).await?;
-    // ---- 5. Trade fees -----------------------------------------------------
+
+    // ---- Trade fees -----------------------------------------------------
     let fee_rows = sqlx::query!(
         r#"
         SELECT
@@ -257,8 +296,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         entry.fees.eur += fee_eur;
     }
 
-    // ---- 6. Sell allocations with dates ------------------------------------
-    let mut sells_by_lot: HashMap<i64, Vec<(NaiveDate, Decimal)>> = HashMap::new();
+    // ---- Sell allocations with dates ------------------------------------
     let sell_rows = sqlx::query!(
         r#"
         SELECT
@@ -273,6 +311,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
     .fetch_all(pool)
     .await?;
 
+    let mut sells_by_lot: HashMap<i64, Vec<(NaiveDate, Decimal)>> = HashMap::new();
     for row in sell_rows {
         let qty = parse_decimal_internal(&row.quantity, "sell quantity")?;
         sells_by_lot
@@ -281,7 +320,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
             .push((row.sell_date.date(), qty));
     }
 
-    // ---- 7. Traverse lots in ascending ID order ----------------------------
+    // ---- Traverse lots in ascending ID order ----------------------------
     //
     // Parent lots always have lower IDs than their CA children, so ascending
     // ID order guarantees every parent is resolved before its children.
@@ -368,7 +407,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         lot_fees.insert(r.lot_id, fees);
     }
 
-    // ---- 8. Build LotRecords -----------------------------------------------
+    // ---- Build LotRecords -----------------------------------------------
     let mut records = Vec::with_capacity(raw_lots.len());
 
     for r in &raw_lots {
@@ -405,6 +444,7 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
         records.push(LotRecord {
             id: r.lot_id,
             listing_id: r.listing_id,
+            instrument_id: r.instrument_id,
             isin: r.isin.clone(),
             name: r.name.clone(),
             ticker: r.ticker.clone(),
@@ -416,16 +456,124 @@ pub async fn load_lot_records(pool: &Pool<Sqlite>) -> Result<Vec<LotRecord>, App
                 "qty_at_acquisition",
             )?,
             price_per_unit: parse_decimal_internal(&r.price_per_unit, "price_per_unit")?,
+            broker_id_at_acquisition: r.broker_id_at_acquisition,
+            transfers: transfers_by_lot.remove(&r.lot_id).unwrap_or_default(),
             existence_start,
             close_date: lot_close_dates.get(&r.lot_id).copied(),
             acquisition_datetime,
             acquisition_fx_rate,
             fees: lot_fees[&r.lot_id],
-            // remove() is fine here: raw_lots is borrowed immutably,
-            // sells_by_lot is a separate HashMap, and lot IDs are unique.
             sells: sells_by_lot.remove(&r.lot_id).unwrap_or_default(),
         });
     }
 
     Ok(records)
+}
+
+/// Sorts `candidates` by (acquisition date, lot id) ascending and greedily
+/// consumes `quantity` from oldest first.
+/// broker agnostic, callers should enforce `candidates` belong to the same broker
+/// Returns vec of (affected lot_id, amount of that lots units sold)
+pub fn match_fifo_lots(
+    candidates: &[&LotRecord],
+    quantity: Decimal,
+    as_of: NaiveDate,
+) -> Result<Vec<(i64, Decimal)>, AppError> {
+    let mut sorted: Vec<&LotRecord> = candidates.to_vec();
+    sorted.sort_by_key(|l| (l.acquisition_datetime.date(), l.id));
+
+    let mut remaining = quantity;
+    let mut allocations = Vec::new();
+    for lot in sorted {
+        if remaining.is_zero() {
+            break;
+        }
+        let available = lot.qty_remaining_at(as_of);
+        if available <= Decimal::ZERO {
+            continue;
+        }
+        let take = available.min(remaining);
+        allocations.push((lot.id, take));
+        remaining -= take;
+    }
+
+    if remaining > Decimal::ZERO {
+        let available_total: Decimal = candidates.iter().map(|l| l.qty_remaining_at(as_of)).sum();
+        return Err(AppError::Validation(format!(
+            "Cannot sell {quantity}; only {available_total} currently held at this broker"
+        )));
+    }
+
+    Ok(allocations)
+}
+
+#[cfg(test)]
+mod match_fifo_lots_tests {
+    use super::*;
+
+    fn lot(id: i64, date: &str, qty: &str, sells: Vec<(&str, &str)>) -> LotRecord {
+        let acquisition_datetime = format!("{date}T00:00:00").parse::<NaiveDateTime>().unwrap();
+        LotRecord {
+            id,
+            listing_id: 1,
+            instrument_id: 1,
+            isin: "IE00TEST0001".into(),
+            name: "Test".into(),
+            ticker: "TST".into(),
+            exchange_mic: "XAMS".into(),
+            instrument_type: InstrumentType::Etf,
+            currency_code: "EUR".into(),
+            qty_at_acquisition: qty.parse().unwrap(),
+            price_per_unit: "10".parse().unwrap(),
+            broker_id_at_acquisition: 1,
+            transfers: vec![],
+            existence_start: acquisition_datetime.date(),
+            close_date: None,
+            acquisition_datetime,
+            acquisition_fx_rate: Decimal::ONE,
+            fees: CurrencyPair::default(),
+            sells: sells
+                .into_iter()
+                .map(|(d, q)| (d.parse().unwrap(), q.parse().unwrap()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn consumes_oldest_lot_first() {
+        let older = lot(1, "2024-01-01", "10", vec![]);
+        let newer = lot(2, "2024-06-01", "10", vec![]);
+        // pass them in reverse to prove sorting, not insertion order, decides
+        let candidates = [&newer, &older];
+        let as_of = "2025-01-01".parse().unwrap();
+
+        let allocations = match_fifo_lots(&candidates, "15".parse().unwrap(), as_of).unwrap();
+
+        assert_eq!(
+            allocations,
+            vec![(1, "10".parse().unwrap()), (2, "5".parse().unwrap())]
+        );
+    }
+
+    #[test]
+    fn errors_when_quantity_exceeds_available() {
+        let only = lot(1, "2024-01-01", "10", vec![]);
+        let candidates = [&only];
+        let as_of = "2025-01-01".parse().unwrap();
+
+        let err = match_fifo_lots(&candidates, "11".parse().unwrap(), as_of).unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[test]
+    fn skips_a_lot_already_fully_sold() {
+        let sold_out = lot(1, "2024-01-01", "10", vec![("2024-06-01", "10")]);
+        let still_open = lot(2, "2024-03-01", "5", vec![]);
+        let candidates = [&sold_out, &still_open];
+        let as_of = "2025-01-01".parse().unwrap();
+
+        let allocations = match_fifo_lots(&candidates, "5".parse().unwrap(), as_of).unwrap();
+
+        assert_eq!(allocations, vec![(2, "5".parse().unwrap())]);
+    }
 }
