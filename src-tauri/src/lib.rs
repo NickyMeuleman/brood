@@ -11,7 +11,7 @@ mod sync;
 
 use chrono_tz::{America, Asia, Australia, Europe, Tz};
 use commands::chart::get_portfolio_history;
-use commands::holdings::get_holdings;
+use commands::holdings::{get_held_positions, get_holdings};
 use commands::instruments::{
     add_listing_form, find_instrument_by_isin, find_listings_by_isin, listing_meta,
 };
@@ -106,7 +106,8 @@ pub fn run() {
         find_instrument_by_isin,
         add_listing_form,
         find_listings_by_isin,
-        listing_meta
+        listing_meta,
+        get_held_positions
     ]);
 
     #[cfg(debug_assertions)]
