@@ -3,6 +3,7 @@ pub mod holdings;
 pub mod instruments;
 pub mod lot_data;
 pub mod sync;
+pub mod tax;
 pub mod trade;
 
 use crate::SUPPORTED_EXCHANGES;
