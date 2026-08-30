@@ -1,9 +1,18 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use std::collections::HashMap;
+
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 
-use crate::{AppError, parse_decimal_internal};
+use crate::{
+    AppError,
+    commands::{
+        lot_data::{LotRecord, load_lot_records, match_fifo_lots},
+        trade::CreateSellTradeInput,
+    },
+    parse_decimal_external, parse_decimal_internal,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, Deserialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -222,6 +231,298 @@ pub async fn pre2026_cost_basis(
         historical_cost_eur,
         method,
         tax_snapshot_2025_id: snapshot.id,
+    })
+}
+
+/// Circulaire 2026/C/74, mainly art. 102 §4 and rn. 144
+pub async fn compute_sell(
+    pool: &Pool<Sqlite>,
+    fields: &CreateSellTradeInput,
+    broker_id: i64,
+) -> Result<SellComputation, AppError> {
+    // ---- Step 1: validate ---------------------------------------------
+    let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
+    if quantity <= Decimal::ZERO {
+        return Err(AppError::Validation("quantity must be positive".into()));
+    }
+    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
+    if unit_price <= Decimal::ZERO {
+        return Err(AppError::Validation("unit_price must be positive".into()));
+    }
+
+    let parse_optional_fee =
+        |raw: Option<String>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+            match raw {
+                None => Ok(None),
+                Some(v) if v.is_empty() || v == "0" => Ok(None),
+                Some(v) => {
+                    let d = parse_decimal_external(&v, ctx)?;
+                    if d < Decimal::ZERO {
+                        return Err(AppError::Validation(format!("{ctx} must be non-negative")));
+                    }
+                    Ok(Some(d))
+                }
+            }
+        };
+    let broker_fee = parse_optional_fee(fields.broker_fee.clone(), "broker_fee")?;
+    let tob_fee = parse_optional_fee(fields.tob_fee.clone(), "tob_fee")?;
+
+    // ---- Step 2: resolve listing ---------------------------------------
+    let listing = sqlx::query!(
+        r#"
+        SELECT
+            i.id              AS "instrument_id!",
+            i.isin            AS "isin!",
+            i.subject_to_cgt  AS "subject_to_cgt!",
+            li.currency_code  AS "currency_code!"
+        FROM listing li
+        JOIN instrument i ON i.id = li.instrument_id
+        WHERE li.id = ?1 AND li.delisted_at IS NULL
+        "#,
+        fields.listing_id
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::NotFound(format!(
+            "Listing {} not found (or delisted)",
+            fields.listing_id
+        ))
+    })?;
+
+    let isin = listing.isin.clone();
+    let subject_to_cgt = listing.subject_to_cgt != 0;
+
+    // ---- Step 3: tax year + confirmed-year / cgt_parameters guards -----
+    // Only relevant when subject_to_cgt — everything downstream is skipped
+    // entirely for exempt instruments (e.g. pensioenspaarfondsen).
+    let brussels_sale_date = to_brussels_date_from_utc(fields.executed_at);
+
+    let tax_year: Option<i64> = if subject_to_cgt {
+        let year = i64::from(brussels_sale_date.year());
+
+        let already_confirmed = sqlx::query_scalar!(
+            r#"
+            SELECT
+                is_confirmed
+            FROM 
+                cgt_exemption_usage
+            WHERE
+                tax_year = ?1
+            "#,
+            year
+        )
+        .fetch_optional(pool)
+        .await?
+        .map(|v| v != 0)
+        .unwrap_or(false);
+
+        if already_confirmed {
+            return Err(AppError::Validation(format!(
+                "Tax year {year} is already confirmed; amending a confirmed year is not supported"
+            )));
+        }
+
+        let params_exist = sqlx::query!(
+            r#"
+            SELECT
+                tax_year
+            FROM
+                cgt_parameters
+            WHERE
+                tax_year = ?1
+            "#,
+            year
+        )
+        .fetch_optional(pool)
+        .await?
+        .is_some();
+
+        if !params_exist {
+            return Err(AppError::Validation(format!(
+                "No cgt_parameters configured for tax year {year}"
+            )));
+        }
+
+        Some(year)
+    } else {
+        None
+    };
+
+    // ---- Step 4: load broker-scoped candidate lots ----------------------
+    let sale_date = fields.executed_at.date_naive();
+    let all_lots = load_lot_records(pool).await?;
+    let candidates: Vec<&LotRecord> = all_lots
+        .iter()
+        .filter(|l| {
+            l.isin == isin && l.is_active_at(sale_date) && l.broker_id_as_of(sale_date) == broker_id
+        })
+        .collect();
+
+    // ---- Step 5: chronology guard, broker-scoped -------------------------
+    let latest_prior_sell: Option<NaiveDateTime> = sqlx::query_scalar!(
+        r#"
+        SELECT
+            MAX(t.executed_at) AS "max_at: NaiveDateTime"
+        FROM
+            sell_allocation sa
+        JOIN trade t ON t.id = sa.sell_trade_id
+        JOIN lot l ON l.id = sa.origin_lot_id
+        WHERE
+            l.instrument_id = ?1
+        AND
+            t.broker_id = ?2
+        "#,
+        listing.instrument_id,
+        broker_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if let Some(latest) = latest_prior_sell {
+        if latest > fields.executed_at.naive_utc() {
+            return Err(AppError::Validation(format!(
+                "A later sell already exists for this instrument at this broker (on {latest}); backdating sales is not supported"
+            )));
+        }
+    }
+
+    // ---- Step 6: FIFO match ----------------------------------------------
+    let allocations = match_fifo_lots(&candidates, quantity, sale_date)?;
+    let candidates_by_id: HashMap<i64, &LotRecord> =
+        candidates.iter().map(|l| (l.id, *l)).collect();
+
+    // ---- Step 7: per-allocation economic + tax figures -------------------
+    let (sale_fx_rate, sale_fx_rate_id) = if listing.currency_code == "EUR" {
+        (Decimal::ONE, None)
+    } else {
+        let (id, rate) = resolve_ecb_rate_with_id(pool, &listing.currency_code, sale_date)
+            .await?
+            .ok_or_else(|| {
+                AppError::MissingData(format!(
+                    "No ECB rate for {} on or before {sale_date}",
+                    listing.currency_code
+                ))
+            })?;
+        (rate, Some(id))
+    };
+
+    let total_fees = broker_fee.unwrap_or(Decimal::ZERO) + tob_fee.unwrap_or(Decimal::ZERO);
+    let cutoff_2026 = NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date");
+
+    let mut allocation_results = Vec::new();
+    let mut total_economic_gain_eur = Decimal::ZERO;
+    let mut total_taxable_gain_eur = if subject_to_cgt {
+        Some(Decimal::ZERO)
+    } else {
+        None
+    };
+
+    for (lot_id, allocated_qty) in allocations {
+        let lot = candidates_by_id[&lot_id];
+        let acquisition_date = to_brussels_date(lot.acquisition_datetime);
+
+        let allocation_fee_share = if quantity.is_zero() {
+            Decimal::ZERO
+        } else {
+            (allocated_qty / quantity) * total_fees
+        };
+
+        let economic_gain_eur = (allocated_qty * unit_price * sale_fx_rate)
+        // sell fees
+            - allocation_fee_share
+        // buy cost
+            - lot.cost_contribution_eur(allocated_qty)
+        // buy fees
+            - lot.fees_eur_for_qty(allocated_qty);
+        total_economic_gain_eur += economic_gain_eur;
+
+        let tax = if subject_to_cgt {
+            let sale_price_eur = allocated_qty * unit_price * sale_fx_rate;
+            let lot_is_pre_2026 = acquisition_date < cutoff_2026;
+
+            let (buy_price_eur, buy_fx_rate_id, pre2026_basis) = if lot_is_pre_2026 {
+                let basis = pre2026_cost_basis(
+                    pool,
+                    listing.instrument_id,
+                    broker_id,
+                    allocated_qty,
+                    sale_price_eur,
+                    brussels_sale_date,
+                )
+                .await?;
+
+                let price = match basis.method {
+                    Pre2026CostBasisMethod::Fotomoment => basis.fotomoment_cost_eur,
+                    Pre2026CostBasisMethod::HistoricalElected => basis.historical_cost_eur,
+                    Pre2026CostBasisMethod::FlooredAtZero => sale_price_eur,
+                };
+                // no buy_fx_rate info, snapshot data is already EUR
+                (price, None, Some(basis))
+            } else {
+                let buy_price_eur = lot.cost_contribution_eur(allocated_qty);
+                let buy_fx_rate_id = if lot.currency_code == "EUR" {
+                    None
+                } else {
+                    let (id, rate) = resolve_ecb_rate_with_id(
+                        pool,
+                        &lot.currency_code,
+                        lot.acquisition_datetime.date(),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        AppError::MissingData(format!(
+                            "No ECB rate for {} on or before {} (lot {} acquisition)",
+                            lot.currency_code,
+                            lot.acquisition_datetime.date(),
+                            lot.id
+                        ))
+                    })?;
+                    debug_assert_eq!(
+                        rate, lot.acquisition_fx_rate,
+                        "acquisition FX rate mismatch for lot {}",
+                        lot.id
+                    );
+                    Some(id)
+                };
+                // no pre 2026 basis as this is post 2025
+                (buy_price_eur, buy_fx_rate_id, None)
+            };
+
+            let taxable_gain_eur = sale_price_eur - buy_price_eur;
+            if let Some(total) = total_taxable_gain_eur.as_mut() {
+                *total += taxable_gain_eur;
+            }
+
+            Some(AllocationTax {
+                sale_price_eur,
+                buy_price_eur,
+                taxable_gain_eur,
+                sale_fx_rate_id,
+                buy_fx_rate_id,
+                pre2026_cost_basis: pre2026_basis,
+            })
+        } else {
+            None
+        };
+
+        allocation_results.push(AllocationComputation {
+            origin_lot_id: lot_id,
+            quantity: allocated_qty,
+            acquisition_date,
+            economic_gain_eur,
+            tax,
+        });
+    }
+
+    Ok(SellComputation {
+        isin,
+        broker_id,
+        subject_to_cgt,
+        tax_year,
+        allocations: allocation_results,
+        total_economic_gain_eur,
+        total_taxable_gain_eur,
     })
 }
 

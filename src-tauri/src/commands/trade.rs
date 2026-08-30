@@ -392,3 +392,13 @@ fn rebel_broker_fee(
         _ => None,
     }
 }
+
+#[derive(Debug, Deserialize, Type)]
+pub struct CreateSellTradeInput {
+    pub listing_id: i64,
+    pub quantity: String,
+    pub unit_price: String,
+    pub executed_at: DateTime<Utc>,
+    pub broker_fee: Option<String>,
+    pub tob_fee: Option<String>,
+}
