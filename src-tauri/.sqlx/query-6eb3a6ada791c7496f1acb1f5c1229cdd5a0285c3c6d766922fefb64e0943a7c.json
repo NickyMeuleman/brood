@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            id as \"id!\",\n            hist_cost_per_unit_eur,\n            snap_price_per_unit_eur\n        FROM\n            tax_snapshot_2025\n        WHERE \n            instrument_id = ?1\n        AND\n            broker_id = ?2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "hist_cost_per_unit_eur",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "snap_price_per_unit_eur",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6eb3a6ada791c7496f1acb1f5c1229cdd5a0285c3c6d766922fefb64e0943a7c"
+}

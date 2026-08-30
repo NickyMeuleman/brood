@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            ratio_from,\n            ratio_to\n        FROM\n            corporate_action\n        WHERE\n            instrument_id = ?1\n          AND\n            action_type IN ('SPLIT', 'REVERSE_SPLIT')\n          AND\n            effective_date > ?2\n          AND\n            effective_date <= ?3\n        ORDER BY\n            effective_date ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "ratio_from",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "ratio_to",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "27eb1ad6b0391f9c423d2b5345104286354b82b7147b7f333b5f27a505d0819b"
+}

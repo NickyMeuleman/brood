@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            id as \"id!\",\n            rate_to_eur\n        FROM fx_rate\n        WHERE currency = ?1\n          AND source = 'ECB'\n          AND date <= ?2\n        ORDER BY date DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "rate_to_eur",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "567535d71583dacc3d2632ece4d0ef02bac42a5a82baa9a71ae7b4cfbf656649"
+}

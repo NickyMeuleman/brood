@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            lot_id,\n            to_broker_id,\n            transferred_at AS \"transferred_at: NaiveDateTime\"\n        FROM lot_transfer\n        ORDER BY lot_id, transferred_at ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "lot_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "to_broker_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "transferred_at: NaiveDateTime",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "aa0df8f74fa66a02399bbcb8fd45888dbf8308e1918a83fc7889b37f0c3280e4"
+}
