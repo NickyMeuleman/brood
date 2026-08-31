@@ -175,17 +175,16 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         .await?;
     }
 
-    // TOB is charged in the listing's own currency.
+    // TOB is always charged in EUR.
     if let Some(fee) = tob_fee {
         let fee_str = fee.to_string();
         sqlx::query!(
             r#"
             INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
-            VALUES (?1, 'TOB', ?2, ?3)
+            VALUES (?1, 'TOB', ?2, 'EUR')
             "#,
             trade_id,
             fee_str,
-            listing.currency_code,
         )
         .execute(&mut *tx)
         .await?;
