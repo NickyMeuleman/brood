@@ -1,3 +1,4 @@
+use crate::commands::tax::{SellComputation, compute_sell};
 use crate::db::Db;
 use crate::db::types::InstrumentType;
 use crate::sync::backfill;
@@ -223,7 +224,6 @@ pub async fn buy(
     let listing_id = fields.listing_id;
     buy_core(&db.pool, fields).await?;
 
-    dbg!("running backfill");
     // try to backfill prices/FX-rates for this holding, not a hard error
     if let Err(e) = backfill(&db.pool, &http.client, listing_id).await {
         eprintln!("Post-buy sync for listing {listing_id} failed (non-fatal): {e}");
@@ -270,6 +270,196 @@ pub async fn import_buy_csv(
     }
 
     Ok(outcomes)
+}
+
+#[derive(Debug, Deserialize, Type)]
+pub struct CreateSellTradeInput {
+    pub listing_id: i64,
+    pub quantity: String,
+    pub unit_price: String,
+    pub executed_at: DateTime<Utc>,
+    pub broker_fee: Option<String>,
+    pub tob_fee: Option<String>,
+}
+
+/// Writes are gated entirely on `compute_sell`'s success: if the tax
+/// computation errors, execution stops there and nothing is written.
+pub async fn sell_core(
+    pool: &Pool<Sqlite>,
+    fields: CreateSellTradeInput,
+) -> Result<SellComputation, AppError> {
+    // broker id hardcoded to 1 for re=bel for now
+    let computation = compute_sell(pool, &fields, 1).await?;
+
+    let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
+    let quantity_str = quantity.to_string();
+    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
+    let unit_price_str = unit_price.to_string();
+    let executed_at = fields.executed_at.naive_utc();
+
+    let parse_optional_fee =
+        |raw: Option<String>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+            match raw {
+                None => Ok(None),
+                Some(v) if v.is_empty() || v == "0" => Ok(None),
+                Some(v) => {
+                    let d = parse_decimal_external(&v, ctx)?;
+                    if d < Decimal::ZERO {
+                        return Err(AppError::Validation(format!("{ctx} must be non-negative")));
+                    }
+                    Ok(Some(d))
+                }
+            }
+        };
+    let broker_fee = parse_optional_fee(fields.broker_fee, "broker_fee")?;
+    let tob_fee = parse_optional_fee(fields.tob_fee, "tob_fee")?;
+
+    let mut tx = pool.begin().await?;
+
+    let trade_id = sqlx::query!(
+        r#"
+        INSERT INTO trade
+            (broker_order_id, listing_id, broker_id, side, quantity, price, executed_at)
+        VALUES
+            (NULL, ?1, ?2, 'SELL', ?3, ?4, ?5)
+        "#,
+        fields.listing_id,
+        // hardcoded to 1 for re=bel for now
+        1,
+        quantity_str,
+        unit_price_str,
+        executed_at,
+    )
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid();
+
+    // Both fee types are always EUR — TOB by law and re=bel only charges EUR too.
+    if let Some(fee) = broker_fee {
+        let fee_str = fee.to_string();
+        sqlx::query!(
+            r#"
+            INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
+            VALUES (?1, 'BROKER', ?2, 'EUR')
+            "#,
+            trade_id,
+            fee_str
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    if let Some(fee) = tob_fee {
+        let fee_str = fee.to_string();
+        sqlx::query!(
+            r#"
+            INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
+            VALUES (?1, 'TOB', ?2, 'EUR')
+            "#,
+            trade_id,
+            fee_str
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    let mut total_allocated = Decimal::ZERO;
+    for alloc in &computation.allocations {
+        total_allocated += alloc.quantity;
+        let quantity_alloc_str = alloc.quantity.to_string();
+
+        let sell_allocation_id = sqlx::query!(
+            r#"
+            INSERT INTO sell_allocation (sell_trade_id, origin_lot_id, quantity)
+            VALUES (?1, ?2, ?3)
+            "#,
+            trade_id,
+            alloc.origin_lot_id,
+            quantity_alloc_str
+        )
+        .execute(&mut *tx)
+        .await?
+        .last_insert_rowid();
+
+        if let Some(tax) = &alloc.tax {
+            let sale_price_str = tax.sale_price_eur.to_string();
+            let buy_price_str = tax.buy_price_eur.to_string();
+            let taxable_gain_str = tax.taxable_gain_eur.to_string();
+            let computed_at = Utc::now().naive_utc();
+            let tax_year = computation
+                .tax_year
+                .expect("tax_year is always Some when subject_to_cgt (and thus tax) is Some");
+
+            let (fotomoment, historical, method, snapshot_id) = match &tax.pre2026_cost_basis {
+                Some(basis) => (
+                    Some(basis.fotomoment_cost_eur.to_string()),
+                    Some(basis.historical_cost_eur.to_string()),
+                    Some(basis.method.clone()),
+                    Some(basis.tax_snapshot_2025_id),
+                ),
+                None => (None, None, None, None),
+            };
+
+            sqlx::query!(
+                r#"
+                INSERT INTO tax_sell_allocation (
+                    sell_allocation_id, sale_price_eur, buy_price_eur, taxable_gain_eur,
+                    tax_year, computed_at, sale_fx_rate_id, buy_fx_rate_id,
+                    fotomoment_cost_eur, historical_cost_eur,
+                    pre2026_cost_basis_method, tax_snapshot_2025_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                "#,
+                sell_allocation_id,
+                sale_price_str,
+                buy_price_str,
+                taxable_gain_str,
+                tax_year,
+                computed_at,
+                tax.sale_fx_rate_id,
+                tax.buy_fx_rate_id,
+                fotomoment,
+                historical,
+                method,
+                snapshot_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    debug_assert_eq!(
+        total_allocated, quantity,
+        "sum of sell_allocation quantities must equal trade.quantity"
+    );
+
+    tx.commit().await?;
+    Ok(computation)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn preview_sell(
+    db: State<'_, Db>,
+    fields: CreateSellTradeInput,
+) -> Result<SellComputation, AppError> {
+    // hardcoded 1 for re=bel for now
+    compute_sell(&db.pool, &fields, 1).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sell(
+    db: State<'_, Db>,
+    http: State<'_, HttpClient>,
+    fields: CreateSellTradeInput,
+) -> Result<SellComputation, AppError> {
+    let listing_id = fields.listing_id;
+    let computation = sell_core(&db.pool, fields).await?;
+    // non-fatal backfill-on-success
+    if let Err(e) = backfill(&db.pool, &http.client, listing_id).await {
+        eprintln!("Post-sell sync for listing {listing_id} failed (non-fatal): {e}");
+    }
+    Ok(computation)
 }
 
 #[derive(Debug, Serialize, Type)]
@@ -390,14 +580,4 @@ fn rebel_broker_fee(
 
         _ => None,
     }
-}
-
-#[derive(Debug, Deserialize, Type)]
-pub struct CreateSellTradeInput {
-    pub listing_id: i64,
-    pub quantity: String,
-    pub unit_price: String,
-    pub executed_at: DateTime<Utc>,
-    pub broker_fee: Option<String>,
-    pub tob_fee: Option<String>,
 }
