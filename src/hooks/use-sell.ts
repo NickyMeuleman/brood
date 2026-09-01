@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { type CreateSellTradeInput, commands } from "@/bindings";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -9,12 +10,12 @@ export function useSell() {
 	const navigate = useNavigate();
 
 	return useMutation({
-		mutationFn: async (input: any /*: CreateBuyTradeInput*/) => {
-			// const res = await commands.buy(input);
-			// if (res.status === "error") {
-			// 	throw new Error(getErrorMessage(res.error));
-			// }
-			// return res.data;
+		mutationFn: async (input: CreateSellTradeInput) => {
+			const res = await commands.sell(input);
+			if (res.status === "error") {
+				throw new Error(getErrorMessage(res.error));
+			}
+			return res.data;
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: queryKeys.holdings });
