@@ -21,6 +21,7 @@ import { useSellPreview } from "@/hooks/use-sell-preview";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { cn, formatCurrency, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
 import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
+import { SellTaxDetailSheet } from "./SellDetails";
 import type { SellableHolding } from "./types";
 
 const SellPage = () => {
@@ -159,6 +160,7 @@ const SellPage = () => {
 		broker_fee: brokerFee,
 		tob_fee: tobFee,
 	});
+	console.log(JSON.stringify(preview.data, null, 2));
 
 	useEffect(() => {
 		if (heldPositionsLoading) return;
@@ -301,6 +303,42 @@ const SellPage = () => {
 							{total === null ? "-" : formatCurrency(total)}
 						</span>
 					</div>
+
+					{preview.error && <QueryError message={preview.error.message} />}
+					{preview.data && (
+						<>
+							<Separator />
+							<div className="space-y-2">
+								<div className="flex items-center justify-between gap-3">
+									<span className="text-base text-muted-foreground">
+										Realized gain
+									</span>
+									<span className="font-semibold text-base">
+										{formatCurrency(
+											Number(preview.data.total_economic_gain_eur),
+										)}
+									</span>
+								</div>
+								<div className="flex items-center justify-between gap-3">
+									<span className="text-base text-muted-foreground">
+										Taxable gain
+									</span>
+									{preview.data.total_taxable_gain_eur !== null ? (
+										<span className="font-semibold text-base">
+											{formatCurrency(
+												Number(preview.data.total_taxable_gain_eur),
+											)}
+										</span>
+									) : (
+										<span className="text-muted-foreground text-sm">
+											Not subject to Belgian capital gains tax
+										</span>
+									)}
+								</div>
+								<SellTaxDetailSheet computation={preview.data} />
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 		</div>
