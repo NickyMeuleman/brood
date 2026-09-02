@@ -160,7 +160,6 @@ const SellPage = () => {
 		broker_fee: brokerFee,
 		tob_fee: tobFee,
 	});
-	console.log(JSON.stringify(preview.data, null, 2));
 
 	useEffect(() => {
 		if (heldPositionsLoading) return;
@@ -335,7 +334,10 @@ const SellPage = () => {
 										</span>
 									)}
 								</div>
-								<SellTaxDetailSheet computation={preview.data} />
+								<SellTaxDetailSheet
+									computation={preview.data}
+									listings={listings}
+								/>
 							</div>
 						</>
 					)}
