@@ -1,3 +1,4 @@
+import { Camera, ListStart, Rewind, SkipBack } from "lucide-react";
 import type {
 	ListingInfo,
 	Pre2026CostBasisMethod,
@@ -7,15 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
-	CardAction,
 	CardContent,
 	CardDescription,
-	CardFooter,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
 	Sheet,
@@ -28,6 +25,7 @@ import {
 	Table,
 	TableBody,
 	TableCell,
+	TableFooter,
 	TableHead,
 	TableHeader,
 	TableRow,
@@ -35,18 +33,20 @@ import {
 import { useDateFormatters } from "@/hooks/use-date-formatters";
 import { formatCurrency, MIC_LABEL } from "@/lib/utils";
 
-const METHOD_LABEL: Record<Pre2026CostBasisMethod, string> = {
-	FOTOMOMENT: "Fotomoment (2025-12-31)",
-	HISTORICAL_ELECTED: "Historical cost",
-	FLOORED_AT_ZERO: "Historical cost, floored to zero",
+const METHOD_LABEL: Record<Pre2026CostBasisMethod, any> = {
+	FOTOMOMENT: <Camera />,
+	HISTORICAL_ELECTED: <Rewind />,
+	FLOORED_AT_ZERO: <SkipBack />,
 };
 
 export function SellTaxDetailSheet({
 	computation,
 	listings,
+	sale,
 }: {
 	computation: SellComputation;
 	listings: ListingInfo[];
+	sale: any;
 }) {
 	const dateformatters = useDateFormatters();
 	// TODO: be specific about listing (id instead of isin)
@@ -55,122 +55,189 @@ export function SellTaxDetailSheet({
 	return (
 		<Sheet>
 			<SheetTrigger render={<Button variant="outline">Show details</Button>} />
-			<SheetContent
-				side="right"
-				showCloseButton={false}
-				className="min-w-1/2 p-4"
-			>
+			<SheetContent side="right" showCloseButton={false} className="min-w-fit">
 				<SheetHeader>
 					<SheetTitle className="font-medium text-base text-foreground">
 						Sale details
 					</SheetTitle>
 				</SheetHeader>
-				<Card className="m-auto w-full max-w-sm">
-					<CardHeader>
-						<CardTitle>{listing?.instrument_name}</CardTitle>
-						<CardDescription className="flex gap-2">
-							<Badge className="rounded-sm font-mono text-sm tracking-wider">
-								{listing?.ticker}
-							</Badge>
-							{listing?.exchange_mic && MIC_LABEL[listing?.exchange_mic]}
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="grid gap-2">
-						<div className="flex items-baseline justify-between">
-							<p>Quantity</p>
-							<p className="font-semibold text-base">{10}</p>
-						</div>
-						<div className="flex items-baseline justify-between">
-							<p>Unit Price</p>
-							<p className="font-semibold text-base">{formatCurrency(30)}</p>
-						</div>
+				<div className="grid gap-6 px-4">
+					<Card className="max-w-md">
+						<CardHeader>
+							<CardTitle>{listing?.instrument_name}</CardTitle>
+							<CardDescription className="flex gap-2">
+								<Badge className="rounded-sm font-mono text-sm tracking-wider">
+									{listing?.ticker}
+								</Badge>
+								{listing?.exchange_mic && MIC_LABEL[listing?.exchange_mic]}
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="grid gap-2">
+							<div className="flex items-baseline justify-between">
+								<p>Quantity</p>
+								<p className="font-semibold text-base">{sale.quantity}</p>
+							</div>
+							<div className="flex items-baseline justify-between">
+								<p>Unit Price</p>
+								<p className="font-semibold text-base">
+									{formatCurrency(Number(sale.unitPrice))}
+								</p>
+							</div>
 
-						<Separator />
+							<Separator />
 
-						<div className="flex items-baseline justify-between">
-							<p>Total</p>
-							<p className="font-semibold text-base">{formatCurrency(300)}</p>
-						</div>
-					</CardContent>
-				</Card>
-				<div>
-					<p className="font-medium text-base">Per lot</p>
+							<div className="flex items-baseline justify-between">
+								<p>Total</p>
+								<p className="font-semibold text-base">
+									{formatCurrency(sale.base)}
+								</p>
+							</div>
+						</CardContent>
+					</Card>
+
 					<div className="grid gap-2">
-						{computation.allocations.map((a) => {
-							return (
-								<div key={a.origin_lot_id}>
-									<p>Acquired on</p>
-									<p>
-										{dateformatters.fulldate.format(
-											new Date(a.acquisition_date),
+						<p className="font-medium text-base">FIFO Lot Breakdown</p>
+						<div className="overflow-hidden rounded-md border border-foreground/10">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Acquired</TableHead>
+										<TableHead>Qty</TableHead>
+										<TableHead>Cost basis</TableHead>
+										{computation.subject_to_cgt && (
+											<TableHead>Taxable gain</TableHead>
+										)}
+										{computation.subject_to_cgt && (
+											<TableHead>Method</TableHead>
+										)}
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{computation.allocations.map((a) => (
+										<TableRow key={a.origin_lot_id}>
+											<TableCell>
+												{dateformatters.fulldate.format(
+													new Date(a.acquisition_date),
+												)}
+											</TableCell>
+											<TableCell>{a.quantity}</TableCell>
+											<TableCell>
+												{formatCurrency(Number(a.tax?.buy_price_eur))}
+											</TableCell>
+											{computation.subject_to_cgt && (
+												<TableCell className="text-emerald-700">
+													{a.tax
+														? formatCurrency(Number(a.tax.taxable_gain_eur))
+														: "—"}
+												</TableCell>
+											)}
+											{computation.subject_to_cgt && (
+												<TableCell>
+													{a.tax?.pre2026_cost_basis ? (
+														METHOD_LABEL[a.tax.pre2026_cost_basis.method]
+													) : (
+														<ListStart />
+													)}
+												</TableCell>
+											)}
+										</TableRow>
+									))}
+								</TableBody>
+								<TableFooter>
+									<TableRow>
+										<TableCell>Total</TableCell>
+										<TableCell>
+											<p>
+												{computation.allocations.reduce(
+													(acc, c) => acc + Number(c.quantity),
+													0,
+												)}
+											</p>
+										</TableCell>
+										<TableCell>
+											{formatCurrency(
+												Number(
+													computation.allocations.reduce(
+														(acc, c) => acc + Number(c.tax?.buy_price_eur),
+														0,
+													),
+												),
+											)}
+										</TableCell>
+										<TableCell className="text-emerald-700">
+											{formatCurrency(
+												Number(computation.total_taxable_gain_eur),
+											)}
+										</TableCell>
+										<TableCell></TableCell>
+									</TableRow>
+								</TableFooter>
+							</Table>
+						</div>
+					</div>
+
+					<div className="grid gap-2">
+						<p className="font-medium text-base">Summary</p>
+						<Card className="max-w-md">
+							<CardContent className="grid gap-2">
+								<div className="flex items-baseline justify-between">
+									<p>Gross</p>
+									<p className="font-semibold text-base text-emerald-700">
+										{formatCurrency(sale.base)}
+									</p>
+								</div>
+								<div className="space-y-0.5">
+									<div className="flex items-baseline justify-between">
+										<p>Taxes & Fees</p>
+										<p className="font-semibold text-base text-rose-700">
+											{formatCurrency(
+												Number(sale.brokerFee) +
+													Number(sale.tobFee) +
+													Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
+											)}
+										</p>
+									</div>
+									<div className="flex items-baseline justify-between gap-3 pl-4">
+										<span className="text-muted-foreground text-sm">
+											Broker
+										</span>
+										<span className="font-medium text-rose-700 text-sm">
+											{formatCurrency(Number(sale.brokerFee))}
+										</span>
+									</div>
+
+									<div className="flex items-baseline justify-between gap-3 pl-4">
+										<span className="text-muted-foreground text-sm">TOB</span>
+										<span className="font-medium text-rose-700 text-sm">
+											{formatCurrency(Number(sale.tobFee))}
+										</span>
+									</div>
+
+									<div className="flex items-baseline justify-between gap-3 pl-4">
+										<span className="text-muted-foreground text-sm">CGT</span>
+										<span className="font-medium text-rose-700 text-sm">
+											{formatCurrency(
+												Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
+											)}
+										</span>
+									</div>
+								</div>
+
+								<Separator />
+
+								<div className="flex items-baseline justify-between">
+									<p>Net</p>
+									<p className="font-semibold text-base text-emerald-700">
+										{formatCurrency(
+											sale.base -
+												Number(sale.brokerFee) -
+												Number(sale.tobFee) -
+												Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
 										)}
 									</p>
-
-									<p>Quantity</p>
-									<p>{a.quantity}</p>
-
-									{a.tax?.pre2026_cost_basis && (
-										<>
-											<p>Method</p>
-											<p>{METHOD_LABEL[a.tax.pre2026_cost_basis.method]}</p>
-
-											<p>Buy price (for CGT)</p>
-											<p>{formatCurrency(Number(a.tax.buy_price_eur))}</p>
-										</>
-									)}
-
-									<p>Taxable gains</p>
-									<p>{formatCurrency(Number(a.tax?.taxable_gain_eur))}</p>
 								</div>
-							);
-						})}
-					</div>
-					{/* <Table> */}
-					{/* 	<TableHeader> */}
-					{/* 		<TableRow> */}
-					{/* 			<TableHead>Acquired</TableHead> */}
-					{/* 			<TableHead>Qty</TableHead> */}
-					{/* 			{computation.subject_to_cgt && ( */}
-					{/* 				<TableHead>Taxable gain</TableHead> */}
-					{/* 			)} */}
-					{/* 			{computation.subject_to_cgt && <TableHead>Method</TableHead>} */}
-					{/* 		</TableRow> */}
-					{/* 	</TableHeader> */}
-					{/* 	<TableBody> */}
-					{/* 		{computation.allocations.map((a) => ( */}
-					{/* 			<TableRow key={a.origin_lot_id}> */}
-					{/* 				<TableCell>{a.acquisition_date}</TableCell> */}
-					{/* 				<TableCell>{a.quantity}</TableCell> */}
-					{/* 				{computation.subject_to_cgt && ( */}
-					{/* 					<TableCell> */}
-					{/* 						{a.tax */}
-					{/* 							? formatCurrency(Number(a.tax.taxable_gain_eur)) */}
-					{/* 							: "—"} */}
-					{/* 					</TableCell> */}
-					{/* 				)} */}
-					{/* 				{computation.subject_to_cgt && ( */}
-					{/* 					<TableCell> */}
-					{/* 						{a.tax?.pre2026_cost_basis */}
-					{/* 							? METHOD_LABEL[a.tax.pre2026_cost_basis.method] */}
-					{/* 							: "Post-2025 (FIFO lot price)"} */}
-					{/* 					</TableCell> */}
-					{/* 				)} */}
-					{/* 			</TableRow> */}
-					{/* 		))} */}
-					{/* 	</TableBody> */}
-					{/* </Table> */}
-					<p className="mt-8 font-medium text-xl">Totals</p>
-					<div className="grid gap-2">
-						<div>
-							<p className="py-1 font-medium">
-								Economic gain (incl. taxes & fees)
-							</p>
-							<p>{computation.total_economic_gain_eur}</p>
-						</div>
-						<div>
-							<p className="font-medium">Taxable gain (excl. taxes & fees)</p>
-							<p>{computation.total_taxable_gain_eur}</p>
-						</div>
+							</CardContent>
+						</Card>
 					</div>
 				</div>
 			</SheetContent>

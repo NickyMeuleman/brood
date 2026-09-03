@@ -337,6 +337,7 @@ const SellPage = () => {
 								<SellTaxDetailSheet
 									computation={preview.data}
 									listings={listings}
+									sale={{ brokerFee, tobFee, quantity, unitPrice, base }}
 								/>
 							</div>
 						</>
