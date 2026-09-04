@@ -9,16 +9,16 @@ import {
 } from "@/components/ui/select";
 import { useFieldContext } from "@/hooks/form-context";
 
-export const SelectField = ({
+export function SelectField<T>({
 	label,
 	options,
 	placeholder,
 }: {
 	label: string;
-	options: { value: string; label: string }[];
+	options: { value: T; label: string }[];
 	placeholder?: string;
-}) => {
-	const field = useFieldContext<string>();
+}) {
+	const field = useFieldContext<T>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 
 	return (
@@ -26,8 +26,15 @@ export const SelectField = ({
 			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
 			<Select
 				id={field.name}
-				value={field.state.value || null}
-				onValueChange={(v) => field.handleChange(v ?? "")}
+				itemToStringLabel={(val) =>
+					options.find((i) => i.value === val)?.label ?? ""
+				}
+				value={field.state.value ?? null}
+				onValueChange={(v) => {
+					if (v !== null && v !== undefined) {
+						field.handleChange(v);
+					}
+				}}
 				onOpenChange={(open) => {
 					if (!open) field.handleBlur();
 				}}
@@ -38,7 +45,7 @@ export const SelectField = ({
 				<SelectContent>
 					<SelectGroup>
 						{options.map((opt) => (
-							<SelectItem key={opt.value} value={opt.value}>
+							<SelectItem key={String(opt.value)} value={opt.value}>
 								{opt.label}
 							</SelectItem>
 						))}
@@ -48,4 +55,4 @@ export const SelectField = ({
 			{isInvalid && <FieldError errors={field.state.meta.errors} />}
 		</Field>
 	);
-};
+}

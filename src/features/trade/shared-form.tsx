@@ -20,6 +20,7 @@ const optionalDecimal = z
 
 export const buySchema = z.object({
 	listing_id: z.int().positive("Choose a listing"),
+	broker_id: z.int().positive("Choose a broker"),
 	quantity: positiveDecimal,
 	executed_at: z.iso.datetime(),
 	unit_price: positiveDecimal,
@@ -30,6 +31,7 @@ export const buySchema = z.object({
 export const buyFormOpts = formOptions({
 	defaultValues: {
 		listing_id: 0,
+		broker_id: 0,
 		quantity: "",
 		unit_price: "",
 		broker_fee: "",

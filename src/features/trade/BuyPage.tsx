@@ -27,7 +27,6 @@ const BuyPage = () => {
 	});
 
 	const { data: brokers = [] } = useBrokers();
-	console.log(brokers);
 
 	const {
 		data: listings = [],
@@ -36,6 +35,7 @@ const BuyPage = () => {
 	} = useListings();
 
 	const listingId = useStore(f.store, (state) => state.values.listing_id);
+	const brokerId = useStore(f.store, (state) => state.values.broker_id);
 	const quantity = useStore(f.store, (state) => state.values.quantity);
 	const unitPrice = useStore(f.store, (state) => state.values.unit_price);
 	const executedAt = useStore(f.store, (state) => state.values.executed_at);
@@ -118,9 +118,23 @@ const BuyPage = () => {
 								/>
 							)}
 						</f.AppField>
-						<f.AppField name="executed_at">
-							{(field) => <field.DateTimeField label="Execution time" />}
-						</f.AppField>
+						<div className="grid grid-cols-2 gap-6">
+							<f.AppField name="executed_at">
+								{(field) => <field.DateTimeField label="Execution time" />}
+							</f.AppField>
+							<f.AppField name="broker_id">
+								{(field) => (
+									<field.SelectField
+										label="Broker"
+										options={brokers.map((b) => ({
+											value: b.id,
+											label: b.name,
+										}))}
+										placeholder=""
+									/>
+								)}
+							</f.AppField>
+						</div>
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="quantity">
 								{(field) => <field.DecimalField label="Quantity" />}

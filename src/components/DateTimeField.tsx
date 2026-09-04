@@ -56,9 +56,6 @@ export function DatePickerTime({
 	return (
 		<FieldGroup className="max-w-xs flex-row">
 			<Field>
-				<FieldLabel className="text-xs" htmlFor="date-picker-optional">
-					Date
-				</FieldLabel>
 				<Popover
 					open={open}
 					onOpenChange={(next) => {
@@ -70,7 +67,6 @@ export function DatePickerTime({
 						render={
 							<Button
 								variant="outline"
-								id="date-picker-optional"
 								className="w-32 justify-between font-normal"
 							>
 								{date ? format(date, "PPP") : "Select date"}
@@ -90,12 +86,8 @@ export function DatePickerTime({
 				</Popover>
 			</Field>
 			<Field className="w-auto">
-				<FieldLabel className="text-xs" htmlFor="time-picker-optional">
-					Time
-				</FieldLabel>
 				<Input
 					type="time"
-					id="time-picker-optional"
 					step="1"
 					className="min-w-24 appearance-none justify-center bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 					value={time}
