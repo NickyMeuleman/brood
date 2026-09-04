@@ -586,3 +586,340 @@ mod pre2026_formula_tests {
         assert_eq!(sale - buy_price, d("-10000"));
     }
 }
+
+#[cfg(test)]
+mod sell_integration_tests {
+    use super::*;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    async fn test_pool() -> Pool<Sqlite> {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("in-memory sqlite pool");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        pool
+    }
+
+    /// Minimal fixture: one EUR currency, one broker, one EUR-denominated
+    /// instrument/listing, and the cgt_parameters/cgt_exemption_usage rows
+    /// for `tax_year`. Keeping everything EUR-denominated sidesteps needing
+    /// fx_rate fixtures entirely — lot_data.rs treats EUR as an implicit
+    /// 1:1 rate, and compute_sell does the same for the sale side.
+    async fn base_fixture(pool: &Pool<Sqlite>, broker_id: i64, instrument_id: i64, tax_year: i64) {
+        sqlx::query!("INSERT INTO currency (code) VALUES ('EUR') ON CONFLICT (code) DO NOTHING")
+            .execute(pool)
+            .await
+            .unwrap();
+
+        let broker_name = format!("Broker{broker_id}");
+        sqlx::query!(
+            "INSERT INTO broker (id, name) VALUES (?1, ?2)",
+            broker_id,
+            broker_name
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        let isin = format!("IE00TEST{instrument_id:04}");
+        sqlx::query!(
+            r#"
+            INSERT INTO instrument
+                (id, isin, name, instrument_type, fsma_registered, accumulating, subject_to_cgt)
+            VALUES (?1, ?2, 'Test Instrument', 'ETF', 0, 1, 1)
+            "#,
+            instrument_id,
+            isin
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO listing (id, instrument_id, exchange_mic, ticker, currency_code)
+            VALUES (?1, ?2, 'XAMS', 'TST', 'EUR')
+            "#,
+            instrument_id,
+            instrument_id
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO cgt_parameters
+                (tax_year, exemption_base_eur, exemption_cap_eur, carryforward_cap_eur)
+            VALUES (?1, '10000', '15000', '1000')
+            "#,
+            tax_year
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO cgt_exemption_usage (tax_year, carryforward_in_eur, is_confirmed)
+            VALUES (?1, '0', 0)
+            "#,
+            tax_year
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    /// Inserts a BUY trade + its lot, both EUR-denominated. Returns the new
+    /// lot id (unused by the tests below, kept for future extension).
+    async fn insert_lot(
+        pool: &Pool<Sqlite>,
+        broker_id: i64,
+        instrument_id: i64,
+        listing_id: i64,
+        executed_at: &str,
+        qty: &str,
+        price: &str,
+    ) -> i64 {
+        let executed_at: NaiveDateTime = executed_at
+            .parse()
+            .expect("valid datetime literal in test fixture");
+
+        let trade_id = sqlx::query!(
+            r#"
+            INSERT INTO trade
+                (listing_id, broker_id, side, quantity, price, executed_at)
+            VALUES (?1, ?2, 'BUY', ?3, ?4, ?5)
+            "#,
+            listing_id,
+            broker_id,
+            qty,
+            price,
+            executed_at
+        )
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_rowid();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO lot
+                (broker_id_at_acquisition, instrument_id, listing_id,
+                 source_trade_id, qty_at_acquisition, price_currency_code, price_per_unit)
+            VALUES (?1, ?2, ?3, ?4, ?5, 'EUR', ?6)
+            "#,
+            broker_id,
+            instrument_id,
+            listing_id,
+            trade_id,
+            qty,
+            price
+        )
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_rowid()
+    }
+
+    async fn insert_tax_snapshot(
+        pool: &Pool<Sqlite>,
+        instrument_id: i64,
+        broker_id: i64,
+        qty: &str,
+        hist_cost: &str,
+        snap_price: &str,
+    ) {
+        sqlx::query!(
+            r#"
+            INSERT INTO tax_snapshot_2025
+                (instrument_id, broker_id, qty_at_snapshot, hist_cost_per_unit_eur, snap_price_per_unit_eur)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+            instrument_id,
+            broker_id,
+            qty,
+            hist_cost,
+            snap_price
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    fn d(s: &str) -> Decimal {
+        s.parse().unwrap()
+    }
+
+    /// A sell that FIFO-matches against both a pre-2026 lot and a post-2025
+    /// lot in the same call
+    #[tokio::test]
+    async fn mixed_era_sell_computes_both_branches_independently() {
+        let pool = test_pool().await;
+        let broker_id = 1;
+        let instrument_id = 1;
+        let listing_id = 1;
+        base_fixture(&pool, broker_id, instrument_id, 2026).await;
+
+        // Pre-2026 lot: 10 units bought 2024-06-01 @ 25.00 EUR.
+        insert_lot(
+            &pool,
+            broker_id,
+            instrument_id,
+            listing_id,
+            "2024-06-01T10:00:00",
+            "10",
+            "25.00",
+        )
+        .await;
+
+        insert_tax_snapshot(&pool, instrument_id, broker_id, "10", "28.00", "22.00").await;
+
+        // Post-2025 lot: 5 units bought 2026-03-01 @ 40.00 EUR.
+        insert_lot(
+            &pool,
+            broker_id,
+            instrument_id,
+            listing_id,
+            "2026-03-01T10:00:00",
+            "5",
+            "40.00",
+        )
+        .await;
+
+        let fields = CreateSellTradeInput {
+            listing_id,
+            quantity: "12".into(),
+            unit_price: "50.00".into(),
+            executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
+            broker_fee: None,
+            tob_fee: None,
+        };
+
+        let computation = compute_sell(&pool, &fields, broker_id).await.unwrap();
+
+        assert_eq!(computation.allocations.len(), 2);
+
+        // FIFO takes the older (pre-2026) lot first: all 10 units, plus 2
+        // of the 5 available post-2025 units to reach the requested 12.
+        let pre2026_alloc = &computation.allocations[0];
+        assert_eq!(pre2026_alloc.quantity, d("10"));
+
+        let pre2026_tax = pre2026_alloc.tax.as_ref().expect("subject_to_cgt is true");
+        let basis = pre2026_tax
+            .pre2026_cost_basis
+            .as_ref()
+            .expect("pre-2026 lot must carry a cost basis breakdown");
+
+        // F = 10 * 22.00 = 220; H = 10 * 28.00 = 280.
+        // Election helps here (F < H < S), so HistoricalElected should win.
+        assert_eq!(basis.method, Pre2026CostBasisMethod::HistoricalElected);
+        assert_eq!(pre2026_tax.sale_price_eur, d("500"));
+        assert_eq!(pre2026_tax.buy_price_eur, d("280"));
+        assert_eq!(pre2026_tax.taxable_gain_eur, d("220"));
+
+        let post2025_alloc = &computation.allocations[1];
+        assert_eq!(post2025_alloc.quantity, d("2"));
+        let post2025_tax = post2025_alloc.tax.as_ref().expect("subject_to_cgt is true");
+        assert!(post2025_tax.pre2026_cost_basis.is_none());
+
+        assert_eq!(post2025_tax.sale_price_eur, d("100"));
+        assert_eq!(post2025_tax.buy_price_eur, d("80"));
+        assert_eq!(post2025_tax.taxable_gain_eur, d("20"));
+
+        assert_eq!(computation.total_economic_gain_eur, d("270"));
+        assert_eq!(computation.total_taxable_gain_eur, Some(d("240")));
+        assert_eq!(computation.tax_year, Some(2026));
+    }
+
+    /// Two brokers hold the same instrument.
+    /// Broker B's lot is chronologically newer than broker A's
+    /// if FIFO were (incorrectly) scoped globally per instrument instead of per broker (Circulaire 2026/C/74 rn. 144),
+    /// a sell at broker B would incorrectly reach back into broker A's older, pre-2026 lot.
+    #[tokio::test]
+    async fn fifo_is_scoped_per_broker_not_globally_per_instrument() {
+        let pool = test_pool().await;
+        let instrument_id = 1;
+        let listing_id = 1;
+        base_fixture(&pool, 1, instrument_id, 2026).await;
+        sqlx::query!("INSERT INTO broker (id, name) VALUES (2, 'BrokerB')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Broker A: 5 units bought 2025-06-01 — pre-2026, chronologically OLDER.
+        insert_lot(
+            &pool,
+            1,
+            instrument_id,
+            listing_id,
+            "2025-06-01T10:00:00",
+            "5",
+            "20.00",
+        )
+        .await;
+        insert_tax_snapshot(&pool, instrument_id, 1, "5", "20.00", "24.00").await;
+
+        // Broker B: 5 units bought 2026-01-15 — post-2025, chronologically NEWER.
+        insert_lot(
+            &pool,
+            2,
+            instrument_id,
+            listing_id,
+            "2026-01-15T10:00:00",
+            "5",
+            "30.00",
+        )
+        .await;
+
+        let fields = CreateSellTradeInput {
+            listing_id,
+            quantity: "5".into(),
+            unit_price: "50.00".into(),
+            executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
+            broker_fee: None,
+            tob_fee: None,
+        };
+
+        // Selling all 5 shares at broker A must succeed using only broker A's lot.
+        let computation_a = compute_sell(&pool, &fields, 1).await.unwrap();
+        assert_eq!(computation_a.allocations.len(), 1);
+        assert_eq!(computation_a.allocations[0].quantity, d("5"));
+        assert!(
+            computation_a.allocations[0]
+                .tax
+                .as_ref()
+                .unwrap()
+                .pre2026_cost_basis
+                .is_some(),
+            "broker A's only lot is pre-2026"
+        );
+
+        // A 1-share sell at broker B must use broker B's post-2025 lot, not
+        // broker A's chronologically-older pre-2026 one.
+        let fields_b = CreateSellTradeInput {
+            quantity: "1".into(),
+            ..fields
+        };
+        let computation_b = compute_sell(&pool, &fields_b, 2).await.unwrap();
+        assert_eq!(computation_b.allocations.len(), 1);
+        assert!(
+            computation_b.allocations[0]
+                .tax
+                .as_ref()
+                .unwrap()
+                .pre2026_cost_basis
+                .is_none(),
+            "broker B's only lot is post-2025 and must not fall back to broker A's"
+        );
+    }
+}

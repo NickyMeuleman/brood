@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO sell_allocation (sell_trade_id, origin_lot_id, quantity)\n            VALUES (?1, ?2, ?3)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "872d27a4ca656a9ec0327d95bb11287bf99ea560e62abf25ad15232cd881acc6"
+}

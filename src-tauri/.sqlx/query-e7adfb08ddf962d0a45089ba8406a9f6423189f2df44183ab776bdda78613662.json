@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            i.id              AS \"instrument_id!\",\n            i.isin            AS \"isin!\",\n            i.subject_to_cgt  AS \"subject_to_cgt!\",\n            li.currency_code  AS \"currency_code!\"\n        FROM listing li\n        JOIN instrument i ON i.id = li.instrument_id\n        WHERE li.id = ?1 AND li.delisted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "instrument_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "isin!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "subject_to_cgt!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "currency_code!",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e7adfb08ddf962d0a45089ba8406a9f6423189f2df44183ab776bdda78613662"
+}

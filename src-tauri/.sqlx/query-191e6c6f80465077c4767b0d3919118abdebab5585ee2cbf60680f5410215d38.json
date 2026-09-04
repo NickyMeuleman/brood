@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                is_confirmed\n            FROM \n                cgt_exemption_usage\n            WHERE\n                tax_year = ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_confirmed",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "191e6c6f80465077c4767b0d3919118abdebab5585ee2cbf60680f5410215d38"
+}

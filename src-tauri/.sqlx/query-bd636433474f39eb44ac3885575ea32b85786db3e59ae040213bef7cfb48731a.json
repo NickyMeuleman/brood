@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO tax_sell_allocation (\n                    sell_allocation_id, sale_price_eur, buy_price_eur, taxable_gain_eur,\n                    tax_year, computed_at, sale_fx_rate_id, buy_fx_rate_id,\n                    fotomoment_cost_eur, historical_cost_eur,\n                    pre2026_cost_basis_method, tax_snapshot_2025_id\n                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "bd636433474f39eb44ac3885575ea32b85786db3e59ae040213bef7cfb48731a"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                tax_year\n            FROM\n                cgt_parameters\n            WHERE\n                tax_year = ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "tax_year",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2af4f877727b8dc810dbd0ba4e312ecd6a2b2690fefa1a3ad91988129604d1fd"
+}

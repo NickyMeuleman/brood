@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            MAX(t.executed_at) AS \"max_at: NaiveDateTime\"\n        FROM\n            sell_allocation sa\n        JOIN trade t ON t.id = sa.sell_trade_id\n        JOIN lot l ON l.id = sa.origin_lot_id\n        WHERE\n            l.instrument_id = ?1\n        AND\n            t.broker_id = ?2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "max_at: NaiveDateTime",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "18ea6a9da77ab97feb0094b2b90c45e5cc86a4f0ca7bdc8d1f73b10a393ada00"
+}
