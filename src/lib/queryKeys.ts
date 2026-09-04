@@ -57,4 +57,5 @@ export const queryKeys = {
 			brokerFee,
 			tobFee,
 		] as const,
+	brokers: ["brokers"] as const,
 };

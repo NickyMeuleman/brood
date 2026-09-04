@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 import { useBrokerFee } from "@/hooks/use-broker-fee";
+import { useBrokers } from "@/hooks/use-brokers";
 import { useBuy } from "@/hooks/use-buy";
 import { useFieldHint } from "@/hooks/use-field-hint";
 import { useFx } from "@/hooks/use-fx";
@@ -24,6 +25,9 @@ const BuyPage = () => {
 		},
 		formId: "buy_form",
 	});
+
+	const { data: brokers = [] } = useBrokers();
+	console.log(brokers);
 
 	const {
 		data: listings = [],

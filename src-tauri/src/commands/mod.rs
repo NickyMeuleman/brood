@@ -1,3 +1,4 @@
+pub mod broker;
 pub mod chart;
 pub mod holdings;
 pub mod instruments;

@@ -10,6 +10,7 @@ mod lookup;
 mod sync;
 
 use chrono_tz::{America, Asia, Australia, Europe, Tz};
+use commands::broker::get_brokers;
 use commands::chart::get_portfolio_history;
 use commands::holdings::{get_held_positions, get_holdings};
 use commands::instruments::{
@@ -19,7 +20,7 @@ use commands::sync::{
     force_update_all_fx, force_update_all_prices, force_update_one_currency_fx,
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
 };
-use commands::trade::{broker_fee_hint, buy, get_listings, import_buy_csv};
+use commands::trade::{broker_fee_hint, buy, get_listings, import_buy_csv, preview_sell, sell};
 use commands::{get_mics, get_price, get_rate};
 use db::init_db;
 use reqwest;
@@ -107,7 +108,10 @@ pub fn run() {
         add_listing_form,
         find_listings_by_isin,
         listing_meta,
-        get_held_positions
+        get_held_positions,
+        preview_sell,
+        sell,
+        get_brokers
     ]);
 
     #[cfg(debug_assertions)]
