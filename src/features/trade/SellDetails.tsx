@@ -122,7 +122,7 @@ export function SellTaxDetailSheet({
 											</TableCell>
 											<TableCell>{a.quantity}</TableCell>
 											<TableCell>
-												{formatCurrency(Number(a.tax?.buy_price_eur))}
+												{formatCurrency(Number(a.tax?.taxable_buy_price_eur))}
 											</TableCell>
 											{computation.subject_to_cgt && (
 												<TableCell className="text-emerald-700">
@@ -158,7 +158,8 @@ export function SellTaxDetailSheet({
 											{formatCurrency(
 												Number(
 													computation.allocations.reduce(
-														(acc, c) => acc + Number(c.tax?.buy_price_eur),
+														(acc, c) =>
+															acc + Number(c.tax?.taxable_buy_price_eur),
 														0,
 													),
 												),
