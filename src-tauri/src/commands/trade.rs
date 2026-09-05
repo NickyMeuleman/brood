@@ -85,6 +85,7 @@ pub async fn get_listings(db: State<'_, Db>) -> Result<Vec<ListingInfo>, AppErro
 #[derive(Debug, Deserialize, Type)]
 pub struct CreateBuyTradeInput {
     pub listing_id: i64,
+    pub broker_id: i64,
     pub quantity: String,
     pub unit_price: String,
     pub executed_at: DateTime<Utc>,
@@ -141,19 +142,18 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         fields.listing_id
     )))?;
 
-    dbg!(&listing);
     let mut tx = pool.begin().await?;
 
-    // broker_id is hardcoded to 1 (Re=bel) for MVP.
     // settlement_date and settlement_cash_id are deferred (cash tracking is out of scope).
     let trade_id = sqlx::query!(
         r#"
         INSERT INTO trade
             (broker_order_id, listing_id, broker_id, side, quantity, price, executed_at)
         VALUES
-            (NULL, ?1, 1, 'BUY', ?2, ?3, ?4)
+            (NULL, ?1, ?2, 'BUY', ?3, ?4, ?5)
         "#,
         fields.listing_id,
+        fields.broker_id,
         quantity_str,
         unit_price_str,
         executed_at,
@@ -162,7 +162,6 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     .await?
     .last_insert_rowid();
 
-    dbg!(&trade_id);
     // Re=bel always charges broker fees in EUR.
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
@@ -176,7 +175,6 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         )
         .execute(&mut *tx)
         .await?;
-        dbg!(&fee_str);
     }
 
     // TOB is always charged in EUR.
@@ -192,7 +190,6 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         )
         .execute(&mut *tx)
         .await?;
-        dbg!(&fee_str);
     }
 
     // The lot records the acquisition fact. broker_id_at_acquisition matches the trade.
@@ -202,8 +199,9 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
             (broker_id_at_acquisition, instrument_id, listing_id,
              source_trade_id, qty_at_acquisition, price_currency_code, price_per_unit)
         VALUES
-            (1, ?1, ?2, ?3, ?4, ?5, ?6)
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         "#,
+        fields.broker_id,
         listing.instrument_id,
         fields.listing_id,
         trade_id,
