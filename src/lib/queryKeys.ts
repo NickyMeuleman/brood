@@ -42,6 +42,7 @@ export const queryKeys = {
 	sellPreview: ["sellPreview"] as const,
 	sellPreviewFor: (
 		listingId: number,
+		brokerId: number,
 		quantity: string,
 		unitPrice: string,
 		executedAt: string,
@@ -51,6 +52,7 @@ export const queryKeys = {
 		[
 			"sellPreview",
 			listingId,
+			brokerId,
 			quantity,
 			unitPrice,
 			executedAt,

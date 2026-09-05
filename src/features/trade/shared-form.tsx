@@ -49,6 +49,7 @@ export const buyFormOpts = formOptions({
 export const buildSellSchema = (maxQty?: string) =>
 	z.object({
 		listing_id: z.int().positive("Choose a holding"),
+		broker_id: z.int().positive("Choose a broker"),
 		quantity: positiveDecimal.refine(
 			(v) => maxQty === undefined || Number(v) <= Number(maxQty),
 			"Cannot exceed the amount you held at the selected execution time.",
@@ -62,6 +63,7 @@ export const buildSellSchema = (maxQty?: string) =>
 export const sellFormOpts = formOptions({
 	defaultValues: {
 		listing_id: 0,
+		broker_id: 0,
 		quantity: "",
 		unit_price: "",
 		broker_fee: "",

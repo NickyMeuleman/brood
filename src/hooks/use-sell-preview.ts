@@ -7,6 +7,7 @@ export function useSellPreview(input: CreateSellTradeInput) {
 	return useQuery({
 		queryKey: queryKeys.sellPreviewFor(
 			input.listing_id,
+			input.broker_id,
 			input.quantity,
 			input.unit_price,
 			input.executed_at,
@@ -15,7 +16,9 @@ export function useSellPreview(input: CreateSellTradeInput) {
 		),
 		queryFn: async () => {
 			const res = await commands.previewSell(input);
-			if (res.status === "error") throw new Error(getErrorMessage(res.error));
+			if (res.status === "error") {
+				throw new Error(getErrorMessage(res.error));
+			}
 			return res.data;
 		},
 		enabled:

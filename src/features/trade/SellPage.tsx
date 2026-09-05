@@ -11,6 +11,7 @@ import {
 } from "@/features/trade/shared-form.tsx";
 import { useAppForm } from "@/hooks/form";
 import { useBrokerFee } from "@/hooks/use-broker-fee";
+import { useBrokers } from "@/hooks/use-brokers";
 import { useFieldHint } from "@/hooks/use-field-hint";
 import { useFx } from "@/hooks/use-fx";
 import { useHeldPositions } from "@/hooks/use-held-positions";
@@ -44,19 +45,23 @@ const SellPage = () => {
 	});
 
 	const listingId = useStore(f.store, (state) => state.values.listing_id);
+	const brokerId = useStore(f.store, (state) => state.values.broker_id);
 	const quantity = useStore(f.store, (state) => state.values.quantity);
 	const unitPrice = useStore(f.store, (state) => state.values.unit_price);
 	const executedAt = useStore(f.store, (state) => state.values.executed_at);
 	const brokerFee = useStore(f.store, (state) => state.values.broker_fee);
 	const tobFee = useStore(f.store, (state) => state.values.tob_fee);
 
+	// TODO: make broker specific. (filter?)
 	const {
 		data: heldPositions,
 		isLoading: heldPositionsLoading,
 		error: heldPositionsError,
 	} = useHeldPositions(executedAt);
 	const { data: listings = [] } = useListings();
+	const { data: brokers = [] } = useBrokers();
 
+	// TODO: make broker specific.
 	const sellableHoldings = useMemo<SellableHolding[]>(() => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
 		const candidates = new Map<number, SellableHolding>();
@@ -115,6 +120,8 @@ const SellPage = () => {
 		holding?.tob_rate_hint,
 		fxRate,
 	);
+
+	// TODO: make broker specific
 	const { data: brokerFeeHint } = useBrokerFee(
 		"re=bel",
 		quantity,
@@ -154,6 +161,7 @@ const SellPage = () => {
 
 	const preview = useSellPreview({
 		listing_id: listingId,
+		broker_id: brokerId,
 		quantity,
 		unit_price: unitPrice,
 		executed_at: executedAt,
@@ -189,9 +197,23 @@ const SellPage = () => {
 								/>
 							)}
 						</f.AppField>
-						<f.AppField name="executed_at">
-							{(field) => <field.DateTimeField label="Execution time" />}
-						</f.AppField>
+						<div className="grid grid-cols-2 gap-6">
+							<f.AppField name="executed_at">
+								{(field) => <field.DateTimeField label="Execution time" />}
+							</f.AppField>
+							<f.AppField name="broker_id">
+								{(field) => (
+									<field.SelectField
+										label="Broker"
+										options={brokers.map((b) => ({
+											value: b.id,
+											label: b.name,
+										}))}
+										placeholder=""
+									/>
+								)}
+							</f.AppField>
+						</div>
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField
 								name="quantity"

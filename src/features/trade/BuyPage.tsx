@@ -61,6 +61,8 @@ const BuyPage = () => {
 		listing?.tob_rate_hint,
 		fxRate,
 	);
+
+	// TODO: make broker specific
 	const { data: brokerFeeHint } = useBrokerFee(
 		"re=bel",
 		quantity,
