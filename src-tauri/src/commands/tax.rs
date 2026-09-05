@@ -237,7 +237,6 @@ pub async fn pre2026_cost_basis(
 pub async fn compute_sell(
     pool: &Pool<Sqlite>,
     fields: &CreateSellTradeInput,
-    broker_id: i64,
 ) -> Result<SellComputation, AppError> {
     // ---- validate ---------------------------------------------
     let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
@@ -353,7 +352,9 @@ pub async fn compute_sell(
     let candidates: Vec<&LotRecord> = all_lots
         .iter()
         .filter(|l| {
-            l.isin == isin && l.is_active_at(sale_date) && l.broker_id_as_of(sale_date) == broker_id
+            l.isin == isin
+                && l.is_active_at(sale_date)
+                && l.broker_id_as_of(sale_date) == fields.broker_id
         })
         .collect();
 
@@ -372,7 +373,7 @@ pub async fn compute_sell(
             t.broker_id = ?2
         "#,
         listing.instrument_id,
-        broker_id
+        fields.broker_id
     )
     .fetch_one(pool)
     .await?;
@@ -443,7 +444,7 @@ pub async fn compute_sell(
                 let basis = pre2026_cost_basis(
                     pool,
                     listing.instrument_id,
-                    broker_id,
+                    fields.broker_id,
                     allocated_qty,
                     sale_price_eur,
                     brussels_sale_date,
@@ -515,7 +516,7 @@ pub async fn compute_sell(
 
     Ok(SellComputation {
         isin,
-        broker_id,
+        broker_id: fields.broker_id,
         subject_to_cgt,
         tax_year,
         allocations: allocation_results,
@@ -790,6 +791,7 @@ mod sell_integration_tests {
 
         let fields = CreateSellTradeInput {
             listing_id,
+            broker_id,
             quantity: "12".into(),
             unit_price: "50.00".into(),
             executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
@@ -797,7 +799,7 @@ mod sell_integration_tests {
             tob_fee: None,
         };
 
-        let computation = compute_sell(&pool, &fields, broker_id).await.unwrap();
+        let computation = compute_sell(&pool, &fields).await.unwrap();
 
         assert_eq!(computation.allocations.len(), 2);
 
@@ -842,16 +844,26 @@ mod sell_integration_tests {
         let pool = test_pool().await;
         let instrument_id = 1;
         let listing_id = 1;
-        base_fixture(&pool, 1, instrument_id, 2026).await;
-        sqlx::query!("INSERT INTO broker (id, name) VALUES (2, 'BrokerB')")
-            .execute(&pool)
-            .await
-            .unwrap();
+        let broker_a_id = 1;
+        let broker_b_id = 2;
+        base_fixture(&pool, broker_a_id, instrument_id, 2026).await;
+        sqlx::query!(
+            r#"
+            INSERT INTO
+                broker (id, name)
+            VALUES
+                (?1, 'BrokerB')
+            "#,
+            broker_b_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Broker A: 5 units bought 2025-06-01 — pre-2026, chronologically OLDER.
         insert_lot(
             &pool,
-            1,
+            broker_a_id,
             instrument_id,
             listing_id,
             "2025-06-01T10:00:00",
@@ -859,12 +871,12 @@ mod sell_integration_tests {
             "20.00",
         )
         .await;
-        insert_tax_snapshot(&pool, instrument_id, 1, "5", "20.00", "24.00").await;
+        insert_tax_snapshot(&pool, instrument_id, broker_a_id, "5", "20.00", "24.00").await;
 
         // Broker B: 5 units bought 2026-01-15 — post-2025, chronologically NEWER.
         insert_lot(
             &pool,
-            2,
+            broker_b_id,
             instrument_id,
             listing_id,
             "2026-01-15T10:00:00",
@@ -875,6 +887,7 @@ mod sell_integration_tests {
 
         let fields = CreateSellTradeInput {
             listing_id,
+            broker_id: broker_a_id,
             quantity: "5".into(),
             unit_price: "50.00".into(),
             executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
@@ -883,7 +896,7 @@ mod sell_integration_tests {
         };
 
         // Selling all 5 shares at broker A must succeed using only broker A's lot.
-        let computation_a = compute_sell(&pool, &fields, 1).await.unwrap();
+        let computation_a = compute_sell(&pool, &fields).await.unwrap();
         assert_eq!(computation_a.allocations.len(), 1);
         assert_eq!(computation_a.allocations[0].quantity, d("5"));
         assert!(
@@ -900,9 +913,10 @@ mod sell_integration_tests {
         // broker A's chronologically-older pre-2026 one.
         let fields_b = CreateSellTradeInput {
             quantity: "1".into(),
+            broker_id: broker_b_id,
             ..fields
         };
-        let computation_b = compute_sell(&pool, &fields_b, 2).await.unwrap();
+        let computation_b = compute_sell(&pool, &fields_b).await.unwrap();
         assert_eq!(computation_b.allocations.len(), 1);
         assert!(
             computation_b.allocations[0]

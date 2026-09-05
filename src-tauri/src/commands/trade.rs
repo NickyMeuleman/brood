@@ -277,6 +277,7 @@ pub async fn import_buy_csv(
 #[derive(Debug, Deserialize, Type)]
 pub struct CreateSellTradeInput {
     pub listing_id: i64,
+    pub broker_id: i64,
     pub quantity: String,
     pub unit_price: String,
     pub executed_at: DateTime<Utc>,
@@ -290,8 +291,7 @@ pub async fn sell_core(
     pool: &Pool<Sqlite>,
     fields: CreateSellTradeInput,
 ) -> Result<SellComputation, AppError> {
-    // broker id hardcoded to 1 for re=bel for now
-    let computation = compute_sell(pool, &fields, 1).await?;
+    let computation = compute_sell(pool, &fields).await?;
 
     let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
     let quantity_str = quantity.to_string();
@@ -326,8 +326,7 @@ pub async fn sell_core(
             (NULL, ?1, ?2, 'SELL', ?3, ?4, ?5)
         "#,
         fields.listing_id,
-        // hardcoded to 1 for re=bel for now
-        1,
+        fields.broker_id,
         quantity_str,
         unit_price_str,
         executed_at,
@@ -444,8 +443,7 @@ pub async fn preview_sell(
     db: State<'_, Db>,
     fields: CreateSellTradeInput,
 ) -> Result<SellComputation, AppError> {
-    // hardcoded 1 for re=bel for now
-    compute_sell(&db.pool, &fields, 1).await
+    compute_sell(&db.pool, &fields).await
 }
 
 #[tauri::command]
