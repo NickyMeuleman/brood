@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use sqlx::{Pool, Sqlite};
-use tauri::{State, http};
+use tauri::State;
 
 #[derive(Debug, Serialize, Type)]
 pub struct ListingInfo {
@@ -141,6 +141,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         fields.listing_id
     )))?;
 
+    dbg!(&listing);
     let mut tx = pool.begin().await?;
 
     // broker_id is hardcoded to 1 (Re=bel) for MVP.
@@ -161,6 +162,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     .await?
     .last_insert_rowid();
 
+    dbg!(&trade_id);
     // Re=bel always charges broker fees in EUR.
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
@@ -174,6 +176,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         )
         .execute(&mut *tx)
         .await?;
+        dbg!(&fee_str);
     }
 
     // TOB is always charged in EUR.
@@ -189,6 +192,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         )
         .execute(&mut *tx)
         .await?;
+        dbg!(&fee_str);
     }
 
     // The lot records the acquisition fact. broker_id_at_acquisition matches the trade.
@@ -383,7 +387,7 @@ pub async fn sell_core(
 
         if let Some(tax) = &alloc.tax {
             let sale_price_str = tax.sale_price_eur.to_string();
-            let buy_price_str = tax.buy_price_eur.to_string();
+            let buy_price_str = tax.taxable_buy_price_eur.to_string();
             let taxable_gain_str = tax.taxable_gain_eur.to_string();
             let computed_at = Utc::now().naive_utc();
             let tax_year = computation
