@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 
 use crate::{
     AppError,
@@ -35,7 +34,7 @@ pub struct Pre2026CostBasis {
 pub struct AllocationTax {
     // fees excluded, EUR only, per Belgian CGT rules
     pub sale_price_eur: Decimal,
-    pub buy_price_eur: Decimal,
+    pub taxable_buy_price_eur: Decimal,
     pub taxable_gain_eur: Decimal,
     pub sale_fx_rate_id: Option<i64>,
     pub buy_fx_rate_id: Option<i64>,
@@ -114,7 +113,7 @@ pub async fn resolve_ecb_rate_with_id(
 /// `historical_cost_eur` (H) is the ELECTIVE alternative: `allocated_qty ×
 /// hist_cost_per_unit_eur`, available up to and including 31.12.2030,
 /// and per rn. 167 can only ever reduce the gain toward zero, never create or deepen a loss.
-/// returns (buy_price_eur, Pre2026CostBasisMethod)
+/// returns (taxable_buy_price_eur, Pre2026CostBasisMethod)
 pub fn apply_pre2026_formula(
     fotomoment_cost_eur: Decimal,
     historical_cost_eur: Decimal,
@@ -143,7 +142,7 @@ pub fn apply_pre2026_formula(
 /// Looks up this broker's own `tax_snapshot_2025` `(instrument_id, broker_id)`
 /// no cross-broker aggregation (Circulaire 2026/C/74 rn. 144: FIFO is scoped per securities account).
 /// Applies split-adjustment for corporate actions with `2025-12-31 < effective_date <= brussels_sale_date`,
-/// WARN: because meerwaardebelasting does not care about the MIC, only the ISIN
+/// INFO: because meerwaardebelasting does not care about the MIC, only the ISIN
 /// same mechanism as `get_holdings`'s `split_multipliers` but keyed by `instrument_id` instead of `listing_id`
 /// (ex. SPPW and SWRD are the same instument/ISIN but different listing/MIC)
 pub async fn pre2026_cost_basis(
@@ -240,7 +239,7 @@ pub async fn compute_sell(
     fields: &CreateSellTradeInput,
     broker_id: i64,
 ) -> Result<SellComputation, AppError> {
-    // ---- Step 1: validate ---------------------------------------------
+    // ---- validate ---------------------------------------------
     let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
     if quantity <= Decimal::ZERO {
         return Err(AppError::Validation("quantity must be positive".into()));
@@ -267,7 +266,7 @@ pub async fn compute_sell(
     let broker_fee = parse_optional_fee(fields.broker_fee.clone(), "broker_fee")?;
     let tob_fee = parse_optional_fee(fields.tob_fee.clone(), "tob_fee")?;
 
-    // ---- Step 2: resolve listing ---------------------------------------
+    // ---- resolve listing ---------------------------------------
     let listing = sqlx::query!(
         r#"
         SELECT
@@ -293,9 +292,8 @@ pub async fn compute_sell(
     let isin = listing.isin.clone();
     let subject_to_cgt = listing.subject_to_cgt != 0;
 
-    // ---- Step 3: tax year + confirmed-year / cgt_parameters guards -----
-    // Only relevant when subject_to_cgt — everything downstream is skipped
-    // entirely for exempt instruments (e.g. pensioenspaarfondsen).
+    // ---- tax year + confirmed-year / cgt_parameters guards -----
+    // Only relevant when subject_to_cgt is true
     let brussels_sale_date = to_brussels_date_from_utc(fields.executed_at);
 
     let tax_year: Option<i64> = if subject_to_cgt {
@@ -349,7 +347,7 @@ pub async fn compute_sell(
         None
     };
 
-    // ---- Step 4: load broker-scoped candidate lots ----------------------
+    // ---- load broker-scoped candidate lots ----------------------
     let sale_date = fields.executed_at.date_naive();
     let all_lots = load_lot_records(pool).await?;
     let candidates: Vec<&LotRecord> = all_lots
@@ -359,7 +357,7 @@ pub async fn compute_sell(
         })
         .collect();
 
-    // ---- Step 5: chronology guard, broker-scoped -------------------------
+    // ---- chronology guard, broker-scoped -------------------------
     let latest_prior_sell: Option<NaiveDateTime> = sqlx::query_scalar!(
         r#"
         SELECT
@@ -387,12 +385,12 @@ pub async fn compute_sell(
         }
     }
 
-    // ---- Step 6: FIFO match ----------------------------------------------
+    // ---- FIFO match ----------------------------------------------
     let allocations = match_fifo_lots(&candidates, quantity, sale_date)?;
     let candidates_by_id: HashMap<i64, &LotRecord> =
         candidates.iter().map(|l| (l.id, *l)).collect();
 
-    // ---- Step 7: per-allocation economic + tax figures -------------------
+    // ---- per-allocation economic + tax figures -------------------
     let (sale_fx_rate, sale_fx_rate_id) = if listing.currency_code == "EUR" {
         (Decimal::ONE, None)
     } else {
@@ -441,7 +439,7 @@ pub async fn compute_sell(
             let sale_price_eur = allocated_qty * unit_price * sale_fx_rate;
             let lot_is_pre_2026 = acquisition_date < cutoff_2026;
 
-            let (buy_price_eur, buy_fx_rate_id, pre2026_basis) = if lot_is_pre_2026 {
+            let (taxable_buy_price_eur, buy_fx_rate_id, pre2026_cost_basis) = if lot_is_pre_2026 {
                 let basis = pre2026_cost_basis(
                     pool,
                     listing.instrument_id,
@@ -489,18 +487,18 @@ pub async fn compute_sell(
                 (buy_price_eur, buy_fx_rate_id, None)
             };
 
-            let taxable_gain_eur = sale_price_eur - buy_price_eur;
+            let taxable_gain_eur = sale_price_eur - taxable_buy_price_eur;
             if let Some(total) = total_taxable_gain_eur.as_mut() {
                 *total += taxable_gain_eur;
             }
 
             Some(AllocationTax {
                 sale_price_eur,
-                buy_price_eur,
+                taxable_buy_price_eur,
                 taxable_gain_eur,
                 sale_fx_rate_id,
                 buy_fx_rate_id,
-                pre2026_cost_basis: pre2026_basis,
+                pre2026_cost_basis,
             })
         } else {
             None
@@ -608,11 +606,6 @@ mod sell_integration_tests {
         pool
     }
 
-    /// Minimal fixture: one EUR currency, one broker, one EUR-denominated
-    /// instrument/listing, and the cgt_parameters/cgt_exemption_usage rows
-    /// for `tax_year`. Keeping everything EUR-denominated sidesteps needing
-    /// fx_rate fixtures entirely — lot_data.rs treats EUR as an implicit
-    /// 1:1 rate, and compute_sell does the same for the sale side.
     async fn base_fixture(pool: &Pool<Sqlite>, broker_id: i64, instrument_id: i64, tax_year: i64) {
         sqlx::query!("INSERT INTO currency (code) VALUES ('EUR') ON CONFLICT (code) DO NOTHING")
             .execute(pool)
@@ -679,8 +672,8 @@ mod sell_integration_tests {
         .unwrap();
     }
 
-    /// Inserts a BUY trade + its lot, both EUR-denominated. Returns the new
-    /// lot id (unused by the tests below, kept for future extension).
+    /// Inserts a BUY trade + its lot, both EUR-denominated.
+    /// Returns the new lot id
     async fn insert_lot(
         pool: &Pool<Sqlite>,
         broker_id: i64,
@@ -760,8 +753,7 @@ mod sell_integration_tests {
         s.parse().unwrap()
     }
 
-    /// A sell that FIFO-matches against both a pre-2026 lot and a post-2025
-    /// lot in the same call
+    /// A sell that FIFO-matches against both a pre-2026 lot and a post-2025 lot in the same call
     #[tokio::test]
     async fn mixed_era_sell_computes_both_branches_independently() {
         let pool = test_pool().await;
@@ -824,7 +816,7 @@ mod sell_integration_tests {
         // Election helps here (F < H < S), so HistoricalElected should win.
         assert_eq!(basis.method, Pre2026CostBasisMethod::HistoricalElected);
         assert_eq!(pre2026_tax.sale_price_eur, d("500"));
-        assert_eq!(pre2026_tax.buy_price_eur, d("280"));
+        assert_eq!(pre2026_tax.taxable_buy_price_eur, d("280"));
         assert_eq!(pre2026_tax.taxable_gain_eur, d("220"));
 
         let post2025_alloc = &computation.allocations[1];
@@ -833,7 +825,7 @@ mod sell_integration_tests {
         assert!(post2025_tax.pre2026_cost_basis.is_none());
 
         assert_eq!(post2025_tax.sale_price_eur, d("100"));
-        assert_eq!(post2025_tax.buy_price_eur, d("80"));
+        assert_eq!(post2025_tax.taxable_buy_price_eur, d("80"));
         assert_eq!(post2025_tax.taxable_gain_eur, d("20"));
 
         assert_eq!(computation.total_economic_gain_eur, d("270"));
