@@ -413,7 +413,16 @@ Because lots are immutable, a spinoff closes the parent lot via lot_close and cr
 and one for the child instrument with child_qty = parent_lot.qty_at_acquisition × spin_off_ratio and price_per_unit = old_price × (1 - cost_basis_factor). 
 Both new lots have parent_lot_id pointing to the closed lot.
 
-FIFO ORDERING:
+FIFO ORDERING
+Circulaire 2026/C/74, rn. 144:
+"wanneer eenzelfde belastingplichtige identieke financiële activa op verschillende
+effectenrekeningen aanhoudt, dient de FIFO-methode afzonderlijk op het niveau
+van elke effectenrekening te worden toegepast"
+
+FIFO is scoped per instrument PER CURRENT BROKER, not globally per instrument.
+"Current broker" for a lot as of a given date is derived via lot_transfer,
+NOT simply lot.broker_id_at_acquisition, since a lot may have moved custody since acquisition.
+
 Acquisition date per lot:
   CASE
     WHEN source_trade_id IS NOT NULL THEN trade.executed_at
@@ -424,6 +433,7 @@ Backend implements FIFO as:
   LEFT JOIN trade            ON lot.source_trade_id = trade.id
   LEFT JOIN corporate_action ON lot.source_ca_id    = corporate_action.id
   WHERE lot.instrument_id = ?
+    AND <lot's derived current broker as of the sell date> = <sell's broker_id>
   ORDER BY acquisition_date ASC, lot.id ASC
 
 QTY_REMAINING:
@@ -535,18 +545,24 @@ Populated once from the official broker tax statement issued before the 2026 fil
 deadline. All three values are immutable external facts after entry. These may differ
 from own calculated values due to differing fx rates, rounding, price data, etc.
 
-AGGREGATION REQUIREMENT (Belgian law):
-The law treats ALL holdings of the same ISIN as one pool, regardless of broker.
-Backend MUST always aggregate ALL rows for a given instrument_id before computing
-the effective tax cost. Using a single broker row in isolation is INCORRECT.
+COST BASIS LOOKUP (Circulaire 2026/C/74, art. 102 §4, rn. 156-168):
+Direct lookup keyed on (instrument_id, broker_id) — NOT a cross-broker weighted average.
+FIFO itself is scoped per broker (rn. 144);
 
-Cross-broker weighted aggregation (backend):
-  total_qty            = SUM(qty_at_snapshot)
-  total_hist_cost_eur  = SUM(qty_at_snapshot × hist_cost_per_unit_eur) / total_qty
-  total_snap_price_eur = SUM(qty_at_snapshot × snap_price_per_unit_eur) / total_qty
-  effective_cost_eur   = if sale_date <= 2030-12-31
-                         → min(total_hist_cost_eur, total_snap_price_eur)
-                         else → total_hist_cost_eur
+Given F = allocated_qty × snap_price_per_unit_eur (this broker's row),
+      H = allocated_qty × hist_cost_per_unit_eur (this broker's row),
+      S = this allocation's sale proceeds in EUR:
+
+  effective_cost_eur = if brussels_sale_date <= 2030-12-31:
+                          max(F, min(S, H))
+                        else:
+                          F
+  taxable_gain_eur = S - effective_cost_eur
+
+The fotomoment value F is the DEFAULT cost. Up to and including 31.12.2030,
+the taxpayer may separately elect actual historical cost H instead.
+Per rn. 167, a higher historical cost can only reduce the resulting meerwaarde toward zero;
+it can NEVER create or enlarge a minderwaarde.
 
 Rules:
   - Applies only to lots where acquisition_date < 2026-01-01.
@@ -781,6 +797,9 @@ BACKEND VALIDATION REQUIRED AT INSERT:
   A mismatch means the transfer record is inconsistent with the known custody chain.
   This must have an explicit test case covering both the no-prior-transfer path
   and the has-prior-transfer path.
+
+Also used to scope FIFO matching per securities account for Belgian CGT
+purposes. see lot's FIFO ORDERING note (Circulaire 2026/C/74 rn. 144).
 
 Migration must include:
 CHECK (from_broker_id != to_broker_id)
