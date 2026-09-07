@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO trade\n                (listing_id, broker_id, side, quantity, price, executed_at)\n            VALUES (?1, ?2, 'BUY', ?3, ?4, ?5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "5768fc6e4166b975cc2cff91f183f36fdc330188c453927fe42d8161653be9cd"
+}

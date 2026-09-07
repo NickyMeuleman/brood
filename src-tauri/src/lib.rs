@@ -10,7 +10,7 @@ mod lookup;
 mod sync;
 
 use chrono_tz::{America, Asia, Australia, Europe, Tz};
-use commands::broker::get_brokers;
+use commands::broker::{add_broker, get_brokers};
 use commands::chart::get_portfolio_history;
 use commands::holdings::{get_held_positions, get_holdings};
 use commands::instruments::{
@@ -111,7 +111,8 @@ pub fn run() {
         get_held_positions,
         preview_sell,
         sell,
-        get_brokers
+        get_brokers,
+        add_broker
     ]);
 
     #[cfg(debug_assertions)]

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO cgt_exemption_usage (tax_year, carryforward_in_eur, is_confirmed)\n            VALUES (?1, '0', 0)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "4a482c2e823568d464ea7421385ce78b6631045bc7f66b4d82e27f1e02e26e88"
+}

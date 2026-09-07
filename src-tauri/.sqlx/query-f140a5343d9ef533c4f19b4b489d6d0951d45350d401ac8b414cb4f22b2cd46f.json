@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO currency (code) VALUES ('EUR') ON CONFLICT (code) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "f140a5343d9ef533c4f19b4b489d6d0951d45350d401ac8b414cb4f22b2cd46f"
+}

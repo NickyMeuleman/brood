@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO tax_snapshot_2025\n                (instrument_id, broker_id, qty_at_snapshot, hist_cost_per_unit_eur, snap_price_per_unit_eur)\n            VALUES (?1, ?2, ?3, ?4, ?5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "b247d92be0a6f0a209b18b8cabec62f81f1cef42ebd7a5062a3a6aefc5b0e1f1"
+}

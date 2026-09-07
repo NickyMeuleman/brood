@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO listing (id, instrument_id, exchange_mic, ticker, currency_code)\n            VALUES (?1, ?2, 'XAMS', 'TST', 'EUR')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "38d9261d050defa352d845532e8363cc6eea3acbb59e31075843d39a88d5b838"
+}

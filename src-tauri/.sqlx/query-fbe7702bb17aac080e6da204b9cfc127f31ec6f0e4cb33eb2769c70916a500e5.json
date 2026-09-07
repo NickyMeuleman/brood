@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO broker (id, name) VALUES (?1, ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "fbe7702bb17aac080e6da204b9cfc127f31ec6f0e4cb33eb2769c70916a500e5"
+}

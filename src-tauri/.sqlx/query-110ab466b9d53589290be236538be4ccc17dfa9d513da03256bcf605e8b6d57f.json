@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO lot\n                (broker_id_at_acquisition, instrument_id, listing_id,\n                 source_trade_id, qty_at_acquisition, price_currency_code, price_per_unit)\n            VALUES (?1, ?2, ?3, ?4, ?5, 'EUR', ?6)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "110ab466b9d53589290be236538be4ccc17dfa9d513da03256bcf605e8b6d57f"
+}

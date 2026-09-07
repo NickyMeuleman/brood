@@ -2,11 +2,21 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { useMemo, useRef } from "react";
 import type {
+	BrokerType,
 	FXSyncOutcome,
 	ImportRowOutcome,
 	PriceSyncOutcome,
 } from "@/bindings";
 import { Button } from "@/components/ui/button";
+import {
+	Item,
+	ItemContent,
+	ItemDescription,
+	ItemTitle,
+} from "@/components/ui/item";
+import { useAppForm } from "@/hooks/form";
+import { useAddBroker } from "@/hooks/use-add-broker";
+import { useBrokers } from "@/hooks/use-brokers";
 import {
 	useForceUpdateAllFx,
 	useForceUpdateAllPrices,
@@ -16,17 +26,39 @@ import {
 import { useImportBuyCSV } from "@/hooks/use-import";
 import { useListings } from "@/hooks/use-listings";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/admin")({
 	component: RouteComponent,
 	staticData: { title: "Admin" },
 });
+
+const BROKER_TYPE_MAP: Record<BrokerType, null> = {
+	BOLERO: null,
+	REBEL: null,
+	MEDIRECT: null,
+	SAXO: null,
+};
 
 function RouteComponent() {
 	const allPrices = useForceUpdateAllPrices();
 	const allFx = useForceUpdateAllFx();
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const importMutation = useImportBuyCSV();
+	const brokers = useBrokers();
+	const addBroker = useAddBroker();
+
+	const form = useAppForm({
+		defaultValues: {
+			name: "",
+			broker_type: "" as BrokerType | "",
+		},
+		onSubmit: async ({ value }) => {
+			await addBroker.mutateAsync({
+				name: value.name.trim(),
+				broker_type: value.broker_type ? value.broker_type : null,
+			});
+			form.reset();
+		},
+	});
 
 	const handleButtonClick = () => {
 		// Programmatically click the hidden file input
@@ -138,6 +170,65 @@ function RouteComponent() {
 					<MutationStatus mutation={importMutation} />
 				</div>
 				<ImportOutcomeList outcomes={importMutation.data} />
+			</section>
+
+			<section className="space-y-3">
+				<h3 className="font-medium text-muted-foreground text-sm uppercase tracking-widest">
+					Brokers
+				</h3>
+
+				<form
+					onSubmit={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						form.handleSubmit();
+					}}
+					className="grid max-w-xl gap-3 rounded-lg border bg-card p-4"
+				>
+					<form.AppField
+						name="name"
+						children={(field) => (
+							<field.TextField
+								label="Name"
+								description="eg. Rebel at Belfius"
+							/>
+						)}
+					/>
+
+					<form.AppField
+						name="broker_type"
+						children={(field) => (
+							<field.SelectField
+								label="Type"
+								options={Object.entries(BROKER_TYPE_MAP).map(([k, v]) => ({
+									value: k,
+									label: k,
+								}))}
+								placeholder=""
+							/>
+						)}
+					/>
+
+					<form.AppForm>
+						<form.SubmitButton label="Submit" />
+					</form.AppForm>
+				</form>
+				{brokers.isError && <p>Brokers error</p>}
+				{brokers.isLoading && <p>Brokers loading</p>}
+				{brokers.data && (
+					<div className="grid w-fit grid-cols-3 gap-3">
+						{brokers.data.map((b) => {
+							return (
+								<Item key={b.id} variant="outline">
+									<ItemContent>
+										<ItemTitle>{b.name}</ItemTitle>
+										<ItemDescription>Type: {b.broker_type}</ItemDescription>
+									</ItemContent>
+								</Item>
+							);
+						})}
+					</div>
+				)}
 			</section>
 		</div>
 	);

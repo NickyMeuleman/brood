@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO cgt_parameters\n                (tax_year, exemption_base_eur, exemption_cap_eur, carryforward_cap_eur)\n            VALUES (?1, '10000', '15000', '1000')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "dd4ff26ee1e8ae3f04df669b4ccf27384ce61255041fe4d52186db67e2192127"
+}

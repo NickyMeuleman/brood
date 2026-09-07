@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO instrument\n                (id, isin, name, instrument_type, fsma_registered, accumulating, subject_to_cgt)\n            VALUES (?1, ?2, 'Test Instrument', 'ETF', 0, 1, 1)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e34f3625a5a8a28cf9ff2b1dde0de37c44e0d690a15b1448ff092638afaf6013"
+}
