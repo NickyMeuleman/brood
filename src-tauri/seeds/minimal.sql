@@ -1,17 +1,11 @@
--- 1. Currencies
+-- Currencies
 INSERT INTO
   currency (code)
 VALUES
   ('EUR'),
   ('USD');
 
--- 2. Brokers
-INSERT INTO
-  broker (id, name)
-VALUES
-  (1, 'Re=bel');
-
--- 3. Baseline Tax Parameters (Current Year: 2026)
+-- Baseline Tax Parameters (Current Year: 2026)
 INSERT INTO
   cgt_parameters (
     tax_year,
