@@ -1,100 +1,112 @@
-import { useState } from "react";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { useFieldContext } from "@/hooks/form-context";
-import { useCurrencies } from "@/hooks/use-currencies";
-import { getCurrencySymbol } from "@/lib/utils";
 import {
 	InputGroup,
 	InputGroupAddon,
 	InputGroupInput,
 	InputGroupText,
-} from "./ui/input-group";
-import { Select } from "./ui/select";
+} from "@/components/ui/input-group";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { useFieldContext } from "@/hooks/form-context";
+import { useCurrencies } from "@/hooks/use-currencies";
+import { getCurrencySymbol } from "@/lib/utils";
+
+export type CurrencyValue = {
+	currencyCode: string;
+	amount: string;
+};
 
 export const CurrencyField = ({
 	label,
-	initialCurrencyCode,
+	initialCurrencyCode = "EUR",
 }: {
 	label: string;
 	initialCurrencyCode?: string;
 }) => {
-	const field = useFieldContext<string>();
+	const field = useFieldContext<CurrencyValue>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
-	const { data: currencies } = useCurrencies();
-	const [currencyCode, setCurrencyCode] = useState(
-		initialCurrencyCode || "EUR",
-	);
+	const { data: currencies = [] } = useCurrencies();
 
-	console.log(currencies);
+	const currency = field.state.value?.currencyCode ?? initialCurrencyCode;
+	const amount = field.state.value?.amount ?? "";
 
 	return (
 		<Field data-invalid={isInvalid}>
 			<FieldLabel htmlFor={field.name}>{label}</FieldLabel>
-			<InputGroup>
-				{/* <Select */}
-				{/* 	id={field.name} */}
-				{/* 	itemToStringLabel={(val) => */}
-				{/* 		options.find((i) => i.value === val)?.label ?? "" */}
-				{/* 	} */}
-				{/* 	value={field.state.value ?? null} */}
-				{/* 	onValueChange={(v) => { */}
-				{/* 		if (v !== null && v !== undefined) { */}
-				{/* 			field.handleChange(v); */}
-				{/* 		} */}
-				{/* 	}} */}
-				{/* 	onOpenChange={(open) => { */}
-				{/* 		if (!open) field.handleBlur(); */}
-				{/* 	}} */}
-				{/* > */}
-				{/* 	<SelectTrigger className="w-full"> */}
-				{/* 		<SelectValue placeholder={placeholder ?? "Select…"} /> */}
-				{/* 	</SelectTrigger> */}
-				{/* 	<SelectContent> */}
-				{/* 		<SelectGroup> */}
-				{/* 			{options.map((opt) => ( */}
-				{/* 				<SelectItem key={String(opt.value)} value={opt.value}> */}
-				{/* 					{opt.label} */}
-				{/* 				</SelectItem> */}
-				{/* 			))} */}
-				{/* 		</SelectGroup> */}
-				{/* 	</SelectContent> */}
-				{/* </Select> */}
-				<InputGroupAddon>
-					<InputGroupText>{getCurrencySymbol(currencyCode)}</InputGroupText>
-				</InputGroupAddon>
-				<InputGroupInput
-					type="text"
-					inputMode="decimal"
-					autoCapitalize="off"
-					spellCheck="false"
-					placeholder="0.00"
-					id={field.name}
-					name={field.name}
-					value={field.state.value}
-					onChange={(e) => {
-						const val = e.target.value;
-						if (/^-?\d*\.?\d*$/.test(val)) {
-							field.handleChange(val);
+			<div className="grid grid-cols-[1fr_auto] gap-3">
+				<InputGroup>
+					<InputGroupAddon>
+						<InputGroupText>{getCurrencySymbol(currency)}</InputGroupText>
+					</InputGroupAddon>
+					<InputGroupInput
+						type="text"
+						inputMode="decimal"
+						autoCapitalize="off"
+						spellCheck="false"
+						placeholder="0.00"
+						id={field.name}
+						name={field.name}
+						value={amount}
+						onChange={(e) => {
+							const val = e.target.value;
+							if (/^-?\d*\.?\d*$/.test(val)) {
+								field.handleChange({ currencyCode: currency, amount: val });
+							}
+						}}
+						onBlur={(e) => {
+							let cleanVal = e.target.value;
+							if (cleanVal === "-" || cleanVal === "-.") cleanVal = "";
+							else if (cleanVal.endsWith(".")) cleanVal = cleanVal.slice(0, -1);
+							else if (cleanVal.startsWith(".")) cleanVal = `0${cleanVal}`;
+							else if (cleanVal.startsWith("-."))
+								cleanVal = `-0.${cleanVal.slice(2)}`;
+
+							if (cleanVal !== e.target.value) {
+								field.handleChange({
+									currencyCode: currency,
+									amount: cleanVal,
+								});
+							}
+
+							field.handleBlur();
+						}}
+						aria-invalid={isInvalid}
+						autoComplete="off"
+					/>
+				</InputGroup>
+
+				<Select
+					id={currency}
+					value={currency}
+					onValueChange={(code) => {
+						if (code) {
+							field.handleChange({ currencyCode: code, amount });
 						}
 					}}
-					onBlur={(e) => {
-						let cleanVal = e.target.value;
-						if (cleanVal === "-" || cleanVal === "-.") cleanVal = "";
-						else if (cleanVal.endsWith(".")) cleanVal = cleanVal.slice(0, -1);
-						else if (cleanVal.startsWith(".")) cleanVal = `0${cleanVal}`;
-						else if (cleanVal.startsWith("-."))
-							cleanVal = `-0.${cleanVal.slice(2)}`;
-
-						if (cleanVal !== e.target.value) {
-							field.handleChange(cleanVal);
-						}
-
-						field.handleBlur();
+					onOpenChange={(open) => {
+						if (!open) field.handleBlur();
 					}}
-					aria-invalid={isInvalid}
-					autoComplete="off"
-				/>
-			</InputGroup>
+				>
+					<SelectTrigger className="w-fit min-w-8">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectGroup>
+							{currencies.map((c) => (
+								<SelectItem key={c.code} value={c.code}>
+									{c.code}
+								</SelectItem>
+							))}
+						</SelectGroup>
+					</SelectContent>
+				</Select>
+			</div>
 			{isInvalid && <FieldError errors={field.state.meta.errors} />}
 		</Field>
 	);
