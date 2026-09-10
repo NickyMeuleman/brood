@@ -48,6 +48,11 @@ const BuyPage = () => {
 		listingCurrency && listingCurrency !== "EUR",
 	);
 
+	const broker = brokers.find((b) => b.id === brokerId);
+	// TODO: make configurable by user in component
+	const brokerFeeCurrency =
+		broker?.broker_type === "MEDIRECT" ? listingCurrency : "EUR";
+
 	const {
 		data: fxRate,
 		error: fxError,
@@ -62,9 +67,8 @@ const BuyPage = () => {
 		fxRate,
 	);
 
-	// TODO: make broker specific
 	const { data: brokerFeeHint } = useBrokerFee(
-		"re=bel",
+		broker?.broker_type || null,
 		quantity,
 		unitPrice,
 		listing?.instrument_type || "STOCK",
@@ -143,9 +147,9 @@ const BuyPage = () => {
 							</f.AppField>
 							<f.AppField name="unit_price">
 								{(field) => (
-									<field.DecimalField
+									<field.CurrencyField
 										label="Unit price"
-										currencyCode={listingCurrency}
+										initialCurrencyCode={listingCurrency}
 									/>
 								)}
 							</f.AppField>
@@ -153,7 +157,10 @@ const BuyPage = () => {
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="broker_fee">
 								{(field) => (
-									<field.DecimalField label="Broker fee" currencyCode="eur" />
+									<field.DecimalField
+										label="Broker fee"
+										currencyCode={brokerFeeCurrency}
+									/>
 								)}
 							</f.AppField>
 							<f.AppField name="tob_fee">

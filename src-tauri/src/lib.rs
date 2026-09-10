@@ -21,7 +21,7 @@ use commands::sync::{
     force_update_one_listing_prices, sync, sync_fx, sync_prices,
 };
 use commands::trade::{broker_fee_hint, buy, get_listings, import_buy_csv, preview_sell, sell};
-use commands::{get_mics, get_price, get_rate};
+use commands::{get_currencies, get_mics, get_price, get_rate};
 use db::init_db;
 use reqwest;
 use rust_decimal::Decimal;
@@ -112,7 +112,8 @@ pub fn run() {
         preview_sell,
         sell,
         get_brokers,
-        add_broker
+        add_broker,
+        get_currencies
     ]);
 
     #[cfg(debug_assertions)]

@@ -1,4 +1,4 @@
-import type { InstrumentType, Period } from "@/bindings";
+import type { BrokerType, InstrumentType, Period } from "@/bindings";
 
 export const queryKeys = {
 	holdings: ["holdings"] as const,
@@ -15,7 +15,7 @@ export const queryKeys = {
 		["price", listingId, date] as const,
 	brokerFee: ["brokerFee"] as const,
 	brokerFeeFor: (
-		broker: string,
+		broker: BrokerType | null,
 		quantity: string,
 		unitPrice: string,
 		instrumentType: InstrumentType,
@@ -60,4 +60,5 @@ export const queryKeys = {
 			tobFee,
 		] as const,
 	brokers: ["brokers"] as const,
+  currencies: ["currencies"] as const
 };

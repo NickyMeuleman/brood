@@ -414,3 +414,27 @@ pub async fn get_mics() -> Vec<String> {
         .map(|e| e.mic.to_string())
         .collect()
 }
+
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct Currency {
+    pub code: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_currencies(db: State<'_, Db>) -> Result<Vec<Currency>, AppError> {
+    sqlx::query_as!(
+        Currency,
+        r#"
+        SELECT
+            code
+        FROM
+            currency
+        ORDER BY
+           code ASC
+    "#
+    )
+    .fetch_all(&db.pool)
+    .await
+    .map_err(|e| e.into())
+}

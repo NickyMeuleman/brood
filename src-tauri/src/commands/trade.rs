@@ -1,3 +1,4 @@
+use crate::commands::broker::BrokerType;
 use crate::commands::tax::{SellComputation, compute_sell};
 use crate::db::Db;
 use crate::db::types::InstrumentType;
@@ -138,8 +139,25 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     .fetch_optional(pool)
     .await?
     .ok_or(AppError::NotFound(format!(
-        "Listing {} not found (or delisted)",
+        "Listing id {} not found (or delisted)",
         fields.listing_id
+    )))?;
+
+    let broker = sqlx::query!(
+        r#"
+        SELECT
+            name,
+            broker_type as "broker_type: BrokerType"
+        FROM broker
+        WHERE id = ?1
+        "#,
+        fields.broker_id
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AppError::NotFound(format!(
+        "Broker id {} not found",
+        fields.broker_id
     )))?;
 
     let mut tx = pool.begin().await?;
@@ -162,16 +180,22 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     .await?
     .last_insert_rowid();
 
-    // Re=bel always charges broker fees in EUR.
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
+        // TODO: allow frontend choice (with hint)
+        let broker_fee_currency = match broker.broker_type {
+            Some(BrokerType::Rebel) => "EUR",
+            Some(BrokerType::Medirect) => &listing.currency_code,
+            _ => "EUR",
+        };
         sqlx::query!(
             r#"
             INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
-            VALUES (?1, 'BROKER', ?2, 'EUR')
+            VALUES (?1, 'BROKER', ?2, ?3)
             "#,
             trade_id,
-            fee_str
+            fee_str,
+            broker_fee_currency
         )
         .execute(&mut *tx)
         .await?;
@@ -527,10 +551,11 @@ fn per_slice(amount: Decimal, fee: Decimal) -> Decimal {
     fee * slices
 }
 
+// TODO: make currency aware?
 #[tauri::command]
 #[specta::specta]
 pub fn broker_fee_hint(
-    broker: String,
+    broker_type: Option<BrokerType>,
     quantity: String,
     unit_price: String,
     instrument_type: InstrumentType,
@@ -538,9 +563,19 @@ pub fn broker_fee_hint(
     fx_rate: String,
 ) -> Result<Option<Decimal>, AppError> {
     let amount = parse_decimal_external(&quantity, "quantity")?
-        * parse_decimal_external(&unit_price, "unit price")?
-        * parse_decimal_external(&fx_rate, "fx rate")?;
-    Ok(rebel_broker_fee(&instrument_type, amount, &mic))
+        * parse_decimal_external(&unit_price, "unit price")?;
+
+    let hint = match broker_type {
+        Some(BrokerType::Rebel) => rebel_broker_fee(
+            &instrument_type,
+            amount * parse_decimal_external(&fx_rate, "fx rate")?,
+            &mic,
+        ),
+        Some(BrokerType::Medirect) => medirect_broker_fee(&instrument_type, amount, &mic),
+        _ => None,
+    };
+
+    Ok(hint)
 }
 
 fn rebel_broker_fee(
@@ -577,6 +612,67 @@ fn rebel_broker_fee(
         // Germany
         (InstrumentType::Etf, "XETR" | "XFRA") if amount <= d(2500) => Some(d(12)),
         (InstrumentType::Etf, "XETR" | "XFRA") => Some(per_slice(amount, d(15))),
+
+        _ => None,
+    }
+}
+
+fn medirect_broker_fee(
+    instrument_type: &InstrumentType,
+    amount: Decimal,
+    mic: &str,
+) -> Option<Decimal> {
+    match instrument_type {
+        InstrumentType::Etf | InstrumentType::Fund => Some(Decimal::ZERO),
+        // Stocks: 0.15% commission with currency-specific minimum fees
+        InstrumentType::Stock => {
+            let percentage_fee = amount * (d(15) / d(10_000));
+
+            let min_fee = match mic {
+                // EUR min: 2.50
+                "XBRU" | "XPAR" | "XAMS" | "XETR" | "XFRA" | "XLIS" | "XMAD" | "XHEL" | "XMIL" => {
+                    Some(d(250) / d(100))
+                }
+                // USD min: 2.50
+                "XNAS" | "XNYS" | "XASE" | "XARC" => Some(d(250) / d(100)),
+                // GBP min: 2.50
+                "XLON" => Some(d(250) / d(100)),
+                // CHF min: 2.50
+                "XSWX" => Some(d(250) / d(100)),
+                // NOK min: 30
+                "XOSL" => Some(d(30)),
+                // SEK min: 30
+                "XSTO" => Some(d(30)),
+                // DKK min: 20
+                "XCSE" => Some(d(20)),
+                _ => None,
+            }?;
+
+            Some(percentage_fee.max(min_fee))
+        }
+
+        // Bonds: 0.20% commission with currency-specific minimum fees
+        InstrumentType::Bond => {
+            let percentage_fee = amount * (d(20) / d(10_000));
+
+            let min_fee = match mic {
+                // EUR min: 15
+                "XBRU" | "XPAR" | "XAMS" | "XETR" | "XFRA" | "XLIS" | "XMAD" | "XHEL" | "XMIL" => {
+                    Some(d(15))
+                }
+                // USD min: 15
+                "XNAS" | "XNYS" | "XASE" | "XARC" => Some(d(15)),
+                // GBP min: 15
+                "XLON" => Some(d(15)),
+                // CHF min: 15
+                "XSWX" => Some(d(15)),
+                // NOK min: 150
+                "XOSL" => Some(d(150)),
+                _ => None,
+            }?;
+
+            Some(percentage_fee.max(min_fee))
+        }
 
         _ => None,
     }

@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
-import { commands, type InstrumentType } from "../bindings";
+import { type BrokerType, commands, type InstrumentType } from "../bindings";
 
 export function useBrokerFee(
-	broker: string,
+	broker: BrokerType | null,
 	quantity: string,
 	unitPrice: string,
 	instrumentType: InstrumentType,
