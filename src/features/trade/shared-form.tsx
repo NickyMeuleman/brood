@@ -18,14 +18,24 @@ const optionalDecimal = z
 		"Must be a positive number",
 	);
 
+export const positiveCurrency = z.object({
+	currencyCode: z.string().min(1, "Currency required"),
+	amount: positiveDecimal,
+});
+
+export const optionalCurrency = z.object({
+	currencyCode: z.string().min(1, "Currency required"),
+	amount: optionalDecimal,
+});
+
 export const buySchema = z.object({
 	listing_id: z.int().positive("Choose a listing"),
 	broker_id: z.int().positive("Choose a broker"),
 	quantity: positiveDecimal,
 	executed_at: z.iso.datetime(),
-	unit_price: positiveDecimal,
-	broker_fee: optionalDecimal,
-	tob_fee: optionalDecimal,
+	unit_price: positiveCurrency,
+	broker_fee: optionalCurrency,
+	tob_fee: optionalCurrency,
 });
 
 export const buyFormOpts = formOptions({
@@ -33,9 +43,9 @@ export const buyFormOpts = formOptions({
 		listing_id: 0,
 		broker_id: 0,
 		quantity: "",
-		unit_price: "",
-		broker_fee: "",
-		tob_fee: "",
+		unit_price: { currencyCode: "EUR", amount: ""},
+		broker_fee: { currencyCode: "EUR", amount: ""},
+		tob_fee: { currencyCode: "EUR", amount: ""},
 		executed_at: new Date().toISOString(),
 	},
 	validators: {

@@ -25,9 +25,11 @@ export type CurrencyValue = {
 export const CurrencyField = ({
 	label,
 	initialCurrencyCode = "EUR",
+	currencyDisabled = false,
 }: {
 	label: string;
 	initialCurrencyCode?: string;
+	currencyDisabled?: boolean;
 }) => {
 	const field = useFieldContext<CurrencyValue>();
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
@@ -84,6 +86,7 @@ export const CurrencyField = ({
 				<Select
 					id={currency}
 					value={currency}
+          disabled={currencyDisabled}
 					onValueChange={(code) => {
 						if (code) {
 							field.handleChange({ currencyCode: code, amount });

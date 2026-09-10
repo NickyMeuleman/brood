@@ -21,7 +21,7 @@ const BuyPage = () => {
 		...buyFormOpts,
 		onSubmit: ({ value }) => {
 			const parsed = buySchema.parse(value);
-			buy.mutate(parsed);
+			// buy.mutate(parsed);
 		},
 		formId: "buy_form",
 	});
@@ -150,6 +150,7 @@ const BuyPage = () => {
 									<field.CurrencyField
 										label="Unit price"
 										initialCurrencyCode={listingCurrency}
+										currencyDisabled={true}
 									/>
 								)}
 							</f.AppField>
@@ -157,15 +158,19 @@ const BuyPage = () => {
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="broker_fee">
 								{(field) => (
-									<field.DecimalField
+									<field.CurrencyField
 										label="Broker fee"
-										currencyCode={brokerFeeCurrency}
+										initialCurrencyCode={brokerFeeCurrency}
 									/>
 								)}
 							</f.AppField>
 							<f.AppField name="tob_fee">
 								{(field) => (
-									<field.DecimalField label="TOB" currencyCode="eur" />
+									<field.CurrencyField
+										label="TOB"
+										initialCurrencyCode="EUR"
+										currencyDisabled={true}
+									/>
 								)}
 							</f.AppField>
 						</div>
