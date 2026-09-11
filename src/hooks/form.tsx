@@ -1,10 +1,10 @@
 import { createFormHook } from "@tanstack/react-form";
-import { CurrencyField } from "@/components/CurrencyField.tsx";
 import { DateTimeField } from "@/components/DateTimeField.tsx";
 import { DecimalField } from "@/components/DecimalField.tsx";
 import { ExchangePicker } from "@/components/ExchangePicker.tsx";
 import { HoldingPicker } from "@/components/HoldingPicker.tsx";
 import { ListingPicker } from "@/components/ListingPicker.tsx";
+import { MoneyField } from "@/components/MoneyField.tsx";
 import { NumberField } from "@/components/NumberField.tsx";
 import { OptionalMoneyField } from "@/components/OptionalMoneyField.tsx";
 import { SelectField } from "@/components/SelectField.tsx";
@@ -18,7 +18,7 @@ export const { useAppForm } = createFormHook({
 		TextField,
 		NumberField,
 		DecimalField,
-		CurrencyField,
+		MoneyField,
 		OptionalMoneyField,
 		ListingPicker,
 		HoldingPicker,
