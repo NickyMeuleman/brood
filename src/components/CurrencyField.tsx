@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { MoneyInput } from "@/bindings";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
@@ -31,8 +32,22 @@ export const CurrencyField = ({
 	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 	const { data: currencies = [] } = useCurrencies();
 
-	const currency = field.state.value?.currency ?? initialCurrencyCode;
-	const amount = field.state.value?.amount ?? "";
+	useEffect(() => {
+		if (
+			initialCurrencyCode &&
+			field.state.value.currency !== initialCurrencyCode
+		) {
+			field.handleChange({
+				amount: field.state.value.amount,
+				currency: initialCurrencyCode,
+			});
+		}
+	}, [
+		initialCurrencyCode,
+		field.state.value.currency,
+		field.state.value.amount,
+		field.handleChange,
+	]);
 
 	return (
 		<Field data-invalid={isInvalid}>
@@ -40,7 +55,11 @@ export const CurrencyField = ({
 			<div className="grid grid-cols-[1fr_auto] gap-3">
 				<InputGroup>
 					<InputGroupAddon>
-						<InputGroupText>{getCurrencySymbol(currency)}</InputGroupText>
+						<InputGroupText>
+							{getCurrencySymbol(
+								field.state.value.currency ?? initialCurrencyCode,
+							)}
+						</InputGroupText>
 					</InputGroupAddon>
 					<InputGroupInput
 						type="text"
@@ -50,11 +69,14 @@ export const CurrencyField = ({
 						placeholder="0.00"
 						id={field.name}
 						name={field.name}
-						value={amount}
+						value={field.state.value.amount}
 						onChange={(e) => {
 							const val = e.target.value;
 							if (/^-?\d*\.?\d*$/.test(val)) {
-								field.handleChange({ currency, amount: val });
+								field.handleChange({
+									currency: field.state.value.currency,
+									amount: val,
+								});
 							}
 						}}
 						onBlur={(e) => {
@@ -67,7 +89,7 @@ export const CurrencyField = ({
 
 							if (cleanVal !== e.target.value) {
 								field.handleChange({
-									currency,
+									currency: field.state.value.currency,
 									amount: cleanVal,
 								});
 							}
@@ -80,12 +102,15 @@ export const CurrencyField = ({
 				</InputGroup>
 
 				<Select
-					id={currency}
-					value={currency}
+					id={field.state.value.currency}
+					value={field.state.value.currency}
 					disabled={currencyDisabled}
 					onValueChange={(currency) => {
 						if (currency) {
-							field.handleChange({ currency, amount });
+							field.handleChange({
+								currency,
+								amount: field.state.value.amount,
+							});
 						}
 					}}
 					onOpenChange={(open) => {

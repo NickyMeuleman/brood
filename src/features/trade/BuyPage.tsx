@@ -21,7 +21,7 @@ const BuyPage = () => {
 		...buyFormOpts,
 		onSubmit: ({ value }) => {
 			const parsed = buySchema.parse(value);
-			// buy.mutate(parsed);
+			buy.mutate(parsed);
 		},
 		formId: "buy_form",
 	});
@@ -44,14 +44,12 @@ const BuyPage = () => {
 
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
+
 	const isForeignCurrency = Boolean(
 		listingCurrency && listingCurrency !== "EUR",
 	);
 
 	const broker = brokers.find((b) => b.id === brokerId);
-	// TODO: make configurable by user in component
-	const brokerFeeCurrency =
-		broker?.broker_type === "MEDIRECT" ? listingCurrency : "EUR";
 
 	const {
 		data: fxRate,
@@ -61,7 +59,7 @@ const BuyPage = () => {
 	const { data: priceHint } = usePrice(executedAt, listingId);
 	const tobHint = useTobHint(
 		quantity,
-		unitPrice,
+		unitPrice.amount,
 		"buy",
 		listing?.tob_rate_hint,
 		fxRate,
@@ -70,7 +68,7 @@ const BuyPage = () => {
 	const { data: brokerFeeHint } = useBrokerFee(
 		broker?.broker_type || null,
 		quantity,
-		unitPrice,
+		unitPrice.amount,
 		listing?.instrument_type || "STOCK",
 		listing?.exchange_mic || "XAMS",
 		fxRate || "1",
@@ -78,15 +76,15 @@ const BuyPage = () => {
 
 	useFieldHint(
 		f,
-		"unit_price",
+		"unit_price.amount",
 		priceHint != null ? Number(priceHint).toFixed(2) : null,
 	);
 	useFieldHint(
 		f,
-		"broker_fee",
+		"broker_fee.amount",
 		brokerFeeHint != null ? Number(brokerFeeHint).toFixed(2) : null,
 	);
-	useFieldHint(f, "tob_fee", tobHint);
+	useFieldHint(f, "tob_fee.amount", tobHint);
 
 	const base = Number(quantity) * Number(unitPrice);
 
@@ -160,7 +158,7 @@ const BuyPage = () => {
 								{(field) => (
 									<field.CurrencyField
 										label="Broker fee"
-										initialCurrencyCode={brokerFeeCurrency}
+										initialCurrencyCode={brokerFee.currency}
 									/>
 								)}
 							</f.AppField>
