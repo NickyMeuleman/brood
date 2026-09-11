@@ -86,7 +86,7 @@ const BuyPage = () => {
 	);
 	useFieldHint(f, "tob_fee.amount", tobHint);
 
-	const base = Number(quantity) * Number(unitPrice);
+	const base = Number(quantity) * Number(unitPrice.amount);
 
 	let convertedBase: number | null;
 	if (!isForeignCurrency) {
@@ -97,10 +97,20 @@ const BuyPage = () => {
 		convertedBase = null;
 	}
 
+	const isForeignBrokerCurrency = brokerFee?.currency !== "EUR";
+	let convertedBroker: number | null;
+	if (!isForeignBrokerCurrency) {
+		convertedBroker = Number(brokerFee.amount);
+	} else if (fxRate) {
+		convertedBroker = Number(brokerFee?.amount || "0") * Number(fxRate);
+	} else {
+		convertedBroker = null;
+	}
+
 	const total =
-		convertedBase !== null
-			? convertedBase + Number(brokerFee) + Number(tobFee)
-			: null;
+		(convertedBase ?? 0) +
+		(convertedBroker ?? 0) +
+		Number(tobFee?.amount || "0");
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
@@ -145,7 +155,7 @@ const BuyPage = () => {
 							</f.AppField>
 							<f.AppField name="unit_price">
 								{(field) => (
-									<field.CurrencyField
+									<field.MoneyField
 										label="Unit price"
 										initialCurrencyCode={listingCurrency}
 										currencyDisabled={true}
@@ -156,15 +166,15 @@ const BuyPage = () => {
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="broker_fee">
 								{(field) => (
-									<field.CurrencyField
+									<field.OptionalMoneyField
 										label="Broker fee"
-										initialCurrencyCode={brokerFee.currency}
+										initialCurrencyCode={brokerFee?.currency}
 									/>
 								)}
 							</f.AppField>
 							<f.AppField name="tob_fee">
 								{(field) => (
-									<field.CurrencyField
+									<field.OptionalMoneyField
 										label="TOB"
 										initialCurrencyCode="EUR"
 										currencyDisabled={true}
@@ -201,15 +211,27 @@ const BuyPage = () => {
 							<span className="text-base text-muted-foreground">
 								Broker fee
 							</span>
-							<span className="font-semibold text-base">
-								{formatCurrency(Number(brokerFee))}
-							</span>
+							{brokerFee && (
+								<span className="font-semibold text-base">
+									{formatCurrency(Number(brokerFee.amount), brokerFee.currency)}
+								</span>
+							)}
 						</div>
+						{isForeignBrokerCurrency && (
+							<FxRatePreview
+								isLoading={fxLoading}
+								error={fxError}
+								rate={fxRate}
+								convertedValue={convertedBroker}
+							/>
+						)}
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">TOB</span>
-							<span className="font-semibold text-base">
-								{formatCurrency(Number(tobFee))}
-							</span>
+							{tobFee && (
+								<span className="font-semibold text-base">
+									{formatCurrency(Number(tobFee.amount), tobFee.currency)}
+								</span>
+							)}
 						</div>
 					</div>
 
@@ -218,7 +240,7 @@ const BuyPage = () => {
 					<div className="flex items-center justify-between gap-3">
 						<span className="font-semibold text-xl">Total</span>
 						<span className="font-semibold text-xl">
-							{total === null ? "-" : formatCurrency(total)}
+							{total === null ? "-" : formatCurrency(total, "EUR")}
 						</span>
 					</div>
 				</div>
@@ -258,7 +280,7 @@ function FxRatePreview({
 		<div className="flex items-center justify-between gap-3 pl-4">
 			<span className="text-muted-foreground text-sm">Converted to EUR</span>
 			<span className="font-medium text-sm">
-				{formatCurrency(convertedValue)}
+				{formatCurrency(convertedValue, "EUR")}
 			</span>
 		</div>
 	);
