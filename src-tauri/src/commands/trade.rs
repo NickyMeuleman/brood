@@ -1,5 +1,6 @@
 use crate::commands::broker::BrokerType;
 use crate::commands::tax::{SellComputation, compute_sell};
+use crate::commands::{Currency, fetch_currencies};
 use crate::db::Db;
 use crate::db::types::InstrumentType;
 use crate::sync::backfill;
@@ -83,15 +84,21 @@ pub async fn get_listings(db: State<'_, Db>) -> Result<Vec<ListingInfo>, AppErro
         .collect())
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct MoneyInput {
+    pub currency: String,
+    pub amount: String,
+}
+
 #[derive(Debug, Deserialize, Type)]
 pub struct CreateBuyTradeInput {
     pub listing_id: i64,
     pub broker_id: i64,
     pub quantity: String,
-    pub unit_price: String,
+    pub unit_price: MoneyInput,
     pub executed_at: DateTime<Utc>,
-    pub broker_fee: Option<String>,
-    pub tob_fee: Option<String>,
+    pub broker_fee: Option<MoneyInput>,
+    pub tob_fee: Option<MoneyInput>,
 }
 
 async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<(), AppError> {
@@ -100,19 +107,19 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         return Err(AppError::Validation("quantity must be positive".into()));
     }
     let quantity_str = quantity.to_string();
-    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
+    let unit_price = parse_decimal_external(&fields.unit_price.amount, "unit_price")?;
     if unit_price <= Decimal::ZERO {
         return Err(AppError::Validation("unit_price must be positive".into()));
     }
     let unit_price_str = unit_price.to_string();
 
     let parse_optional_fee =
-        |raw: Option<String>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+        |raw: Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
             match raw {
                 None => Ok(None),
-                Some(v) if v.is_empty() || v == "0" => Ok(None),
+                Some(v) if v.amount.is_empty() || v.amount == "0" => Ok(None),
                 Some(v) => {
-                    let d = parse_decimal_external(&v, ctx)?;
+                    let d = parse_decimal_external(&v.amount, ctx)?;
                     if d < Decimal::ZERO {
                         return Err(AppError::Validation(format!("{ctx} must be non-negative")));
                     }
@@ -120,7 +127,23 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
                 }
             }
         };
+
+    let currencies = fetch_currencies(pool).await?;
+    if let Some(fee) = fields
+        .broker_fee
+        .as_ref()
+        .filter(|f| !currencies.iter().any(|c| c.code == f.currency))
+    {
+        return Err(AppError::Validation(format!(
+            "Invalid broker fee currency: {}",
+            fee.currency
+        )));
+    }
     let broker_fee = parse_optional_fee(fields.broker_fee, "broker_fee")?;
+
+    if matches!(&fields.tob_fee, Some(fee) if fee.currency != "EUR") {
+        return Err(AppError::Validation("TOB fee currency must be EUR".into()));
+    }
     let tob_fee = parse_optional_fee(fields.tob_fee, "tob_fee")?;
 
     let executed_at = fields.executed_at.naive_utc();
@@ -142,6 +165,12 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         "Listing id {} not found (or delisted)",
         fields.listing_id
     )))?;
+
+    if fields.unit_price.currency != listing.currency_code {
+        return Err(AppError::Validation(
+            "Unit price currency does not match listing currency".into(),
+        ));
+    }
 
     let broker = sqlx::query!(
         r#"

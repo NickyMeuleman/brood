@@ -415,14 +415,12 @@ pub async fn get_mics() -> Vec<String> {
         .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Currency {
     pub code: String,
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn get_currencies(db: State<'_, Db>) -> Result<Vec<Currency>, AppError> {
+pub async fn fetch_currencies(pool: &Pool<Sqlite>) -> Result<Vec<Currency>, AppError> {
     sqlx::query_as!(
         Currency,
         r#"
@@ -432,9 +430,15 @@ pub async fn get_currencies(db: State<'_, Db>) -> Result<Vec<Currency>, AppError
             currency
         ORDER BY
            code ASC
-    "#
+        "#
     )
-    .fetch_all(&db.pool)
+    .fetch_all(pool)
     .await
     .map_err(|e| e.into())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_currencies(db: State<'_, Db>) -> Result<Vec<Currency>, AppError> {
+    fetch_currencies(&db.pool).await
 }
