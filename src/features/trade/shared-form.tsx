@@ -2,85 +2,48 @@ import { formOptions } from "@tanstack/react-form";
 import { z } from "zod";
 import type { MoneyInput } from "@/bindings";
 
+// money is handled as string to preserve accuracy
+const DECIMAL_RE = /^\d+(\.\d+)?$/;
+const isZero = (v: string) => /^0+(\.0*)?$/.test(v);
+const isPositiveDecimal = (v: string) => DECIMAL_RE.test(v) && !isZero(v);
+
 const positiveDecimal = z
 	.string()
+	.trim()
 	.min(1, "Required")
-	.refine(
-		(v) => !Number.isNaN(Number(v)) && Number(v) > 0,
-		"Must be a positive number",
-	);
+	.refine(isPositiveDecimal, "Must be a positive number");
 
-export const positiveMoneyInput = z
-	.object({
-		currency: z.string().min(1, "Currency required"),
-		amount: z.string(),
-	})
-	.transform((val, ctx): MoneyInput => {
-		const trimmed = val.amount.trim();
-		if (!trimmed) {
-			ctx.addIssue({
-				code: "custom",
-				message: "Required",
-				path: ["amount"],
-			});
-			return z.NEVER;
-		}
+const currencyCode = z.string().trim().min(1, "Currency required");
 
-		const num = Number(trimmed);
-		if (Number.isNaN(num) || num <= 0) {
-			ctx.addIssue({
-				code: "custom",
-				message: "Must be a positive number",
-				path: ["amount"],
-			});
-			return z.NEVER;
-		}
+export const moneyInput = z.object({
+	currency: currencyCode,
+	amount: positiveDecimal,
+}) satisfies z.ZodType<MoneyInput>;
 
-		return { currency: val.currency, amount: trimmed };
-	});
-
-export const optionalMoneyInput = z
-	.object({
-		currency: z.string().min(1, "Currency required"),
-		amount: z.string(),
-	})
-	.transform((val, ctx): MoneyInput | null => {
-		const trimmed = val.amount.trim();
-		if (!trimmed) return null;
-
-		const num = Number(trimmed);
-		if (Number.isNaN(num) || num <= 0) {
-			ctx.addIssue({
-				code: "custom",
-				message: "Must be a positive number",
-				path: ["amount"],
-			});
-			return z.NEVER;
-		}
-
-		return { currency: val.currency, amount: trimmed };
-	});
+export const optionalMoneyInput = moneyInput.nullable();
 
 export const buySchema = z.object({
 	listing_id: z.int().positive("Choose a listing"),
 	broker_id: z.int().positive("Choose a broker"),
 	quantity: positiveDecimal,
 	executed_at: z.iso.datetime(),
-	unit_price: positiveMoneyInput,
+	unit_price: moneyInput,
 	broker_fee: optionalMoneyInput,
 	tob_fee: optionalMoneyInput,
 });
 
+const buyDefaultValues: z.infer<typeof buySchema> = {
+	listing_id: 0,
+	broker_id: 0,
+	quantity: "",
+	unit_price: { currency: "EUR", amount: "" },
+	broker_fee: null,
+	tob_fee: null,
+	executed_at: new Date().toISOString(),
+};
+
 export const buyFormOpts = formOptions({
-	defaultValues: {
-		listing_id: 0,
-		broker_id: 0,
-		quantity: "",
-		unit_price: { currency: "EUR", amount: "" },
-		broker_fee: { currency: "EUR", amount: "" },
-		tob_fee: { currency: "EUR", amount: "" },
-		executed_at: new Date().toISOString(),
-	},
+	defaultValues: buyDefaultValues,
 	validators: {
 		// validate on mount or canSubmit starts as true
 		onMount: buySchema,
