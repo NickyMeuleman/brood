@@ -6,7 +6,6 @@ import { HoldingPicker } from "@/components/HoldingPicker.tsx";
 import { ListingPicker } from "@/components/ListingPicker.tsx";
 import { MoneyField } from "@/components/MoneyField.tsx";
 import { NumberField } from "@/components/NumberField.tsx";
-import { OptionalMoneyField } from "@/components/OptionalMoneyField.tsx";
 import { SelectField } from "@/components/SelectField.tsx";
 import { SubmitButton } from "@/components/SubmitButton.tsx";
 import { SwitchField } from "@/components/SwitchField.tsx";
@@ -19,7 +18,6 @@ export const { useAppForm } = createFormHook({
 		NumberField,
 		DecimalField,
 		MoneyField,
-		OptionalMoneyField,
 		ListingPicker,
 		HoldingPicker,
 		ExchangePicker,
