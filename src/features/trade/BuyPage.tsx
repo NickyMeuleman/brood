@@ -45,6 +45,11 @@ const BuyPage = () => {
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
 
+	useFieldHint(f, "unit_price.currency", listing?.currency_code);
+	// TODO: all money hints should be sent as Money {currency, amount}, not a plain string
+	useFieldHint(f, "broker_fee.currency", brokerFee?.currency);
+	useFieldHint(f, "tob_fee.currency", "EUR");
+
 	const isForeignCurrency = Boolean(
 		listingCurrency && listingCurrency !== "EUR",
 	);
@@ -97,9 +102,10 @@ const BuyPage = () => {
 		convertedBase = null;
 	}
 
-	const isForeignBrokerCurrency = brokerFee?.currency !== "EUR";
+	const isForeignBrokerCurrency =
+		brokerFee?.currency && brokerFee?.currency !== "EUR";
 	let convertedBroker: number | null;
-	if (!isForeignBrokerCurrency) {
+	if (brokerFee?.currency && !isForeignBrokerCurrency) {
 		convertedBroker = Number(brokerFee.amount);
 	} else if (fxRate) {
 		convertedBroker = Number(brokerFee?.amount || "0") * Number(fxRate);
@@ -111,6 +117,8 @@ const BuyPage = () => {
 		(convertedBase ?? 0) +
 		(convertedBroker ?? 0) +
 		Number(tobFee?.amount || "0");
+
+	console.log({ convertedBase, convertedBroker, tobFee: tobFee?.amount });
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">
@@ -157,7 +165,6 @@ const BuyPage = () => {
 								{(field) => (
 									<field.MoneyField
 										label="Unit price"
-										initialCurrencyCode={listingCurrency}
 										currencyDisabled={true}
 									/>
 								)}
@@ -165,20 +172,11 @@ const BuyPage = () => {
 						</div>
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="broker_fee">
-								{(field) => (
-									<field.OptionalMoneyField
-										label="Broker fee"
-										initialCurrencyCode={brokerFee?.currency}
-									/>
-								)}
+								{(field) => <field.MoneyField label="Broker fee" />}
 							</f.AppField>
 							<f.AppField name="tob_fee">
 								{(field) => (
-									<field.OptionalMoneyField
-										label="TOB"
-										initialCurrencyCode="EUR"
-										currencyDisabled={true}
-									/>
+									<field.MoneyField label="TOB" currencyDisabled={true} />
 								)}
 							</f.AppField>
 						</div>
@@ -211,11 +209,12 @@ const BuyPage = () => {
 							<span className="text-base text-muted-foreground">
 								Broker fee
 							</span>
-							{brokerFee && (
-								<span className="font-semibold text-base">
-									{formatCurrency(Number(brokerFee.amount), brokerFee.currency)}
-								</span>
-							)}
+							<span className="font-semibold text-base">
+								{formatCurrency(
+									Number(brokerFee?.amount || "0"),
+									brokerFee?.currency,
+								)}
+							</span>
 						</div>
 						{isForeignBrokerCurrency && (
 							<FxRatePreview
@@ -227,11 +226,12 @@ const BuyPage = () => {
 						)}
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">TOB</span>
-							{tobFee && (
-								<span className="font-semibold text-base">
-									{formatCurrency(Number(tobFee.amount), tobFee.currency)}
-								</span>
-							)}
+							<span className="font-semibold text-base">
+								{formatCurrency(
+									Number(tobFee?.amount || "0"),
+									tobFee?.currency,
+								)}
+							</span>
 						</div>
 					</div>
 
