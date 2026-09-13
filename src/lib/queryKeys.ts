@@ -16,6 +16,7 @@ export const queryKeys = {
 	brokerFee: ["brokerFee"] as const,
 	brokerFeeFor: (
 		broker: BrokerType | null,
+    listing_currency: string,
 		quantity: string,
 		unitPrice: string,
 		instrumentType: InstrumentType,
@@ -25,6 +26,7 @@ export const queryKeys = {
 		[
 			"brokerFee",
 			broker,
+      listing_currency,
 			quantity,
 			unitPrice,
 			instrumentType,

@@ -5,6 +5,7 @@ import { type BrokerType, commands, type InstrumentType } from "../bindings";
 
 export function useBrokerFee(
 	broker: BrokerType | null,
+  listing_currency: string,
 	quantity: string,
 	unitPrice: string,
 	instrumentType: InstrumentType,
@@ -14,6 +15,7 @@ export function useBrokerFee(
 	return useQuery({
 		queryKey: queryKeys.brokerFeeFor(
 			broker,
+      listing_currency,
 			quantity,
 			unitPrice,
 			instrumentType,
@@ -23,6 +25,7 @@ export function useBrokerFee(
 		queryFn: async () => {
 			const res = await commands.brokerFeeHint(
 				broker,
+        listing_currency,
 				quantity,
 				unitPrice,
 				instrumentType,

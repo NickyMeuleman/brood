@@ -45,9 +45,11 @@ const BuyPage = () => {
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
 
-	useFieldHint(f, "unit_price.currency", listing?.currency_code);
-	// TODO: all money hints should be sent as Money {currency, amount}, not a plain string
-	useFieldHint(f, "broker_fee.currency", brokerFee?.currency);
+	useFieldHint(
+		f,
+		"unit_price.currency",
+		listingCurrency ? listingCurrency : null,
+	);
 	useFieldHint(f, "tob_fee.currency", "EUR");
 
 	const isForeignCurrency = Boolean(
@@ -61,7 +63,14 @@ const BuyPage = () => {
 		error: fxError,
 		isLoading: fxLoading,
 	} = useFx(executedAt, listingCurrency || "EUR");
+
 	const { data: priceHint } = usePrice(executedAt, listingId);
+	useFieldHint(
+		f,
+		"unit_price.amount",
+		priceHint != null ? Number(priceHint).toFixed(2) : null,
+	);
+
 	const tobHint = useTobHint(
 		quantity,
 		unitPrice.amount,
@@ -69,9 +78,11 @@ const BuyPage = () => {
 		listing?.tob_rate_hint,
 		fxRate,
 	);
+	useFieldHint(f, "tob_fee.amount", tobHint);
 
 	const { data: brokerFeeHint } = useBrokerFee(
 		broker?.broker_type || null,
+		listingCurrency || "EUR",
 		quantity,
 		unitPrice.amount,
 		listing?.instrument_type || "STOCK",
@@ -81,15 +92,14 @@ const BuyPage = () => {
 
 	useFieldHint(
 		f,
-		"unit_price.amount",
-		priceHint != null ? Number(priceHint).toFixed(2) : null,
+		"broker_fee.currency",
+		brokerFeeHint?.currency ? brokerFeeHint?.currency : null,
 	);
 	useFieldHint(
 		f,
 		"broker_fee.amount",
-		brokerFeeHint != null ? Number(brokerFeeHint).toFixed(2) : null,
+		brokerFeeHint?.amount ? Number(brokerFeeHint.amount).toFixed(2) : null,
 	);
-	useFieldHint(f, "tob_fee.amount", tobHint);
 
 	const base = Number(quantity) * Number(unitPrice.amount);
 
@@ -117,8 +127,6 @@ const BuyPage = () => {
 		(convertedBase ?? 0) +
 		(convertedBroker ?? 0) +
 		Number(tobFee?.amount || "0");
-
-	console.log({ convertedBase, convertedBroker, tobFee: tobFee?.amount });
 
 	return (
 		<div className="m-auto mt-6 grid max-w-10/12 grid-cols-1 gap-12 lg:grid-cols-3">

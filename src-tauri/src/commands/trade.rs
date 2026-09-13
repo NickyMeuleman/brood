@@ -86,8 +86,14 @@ pub async fn get_listings(db: State<'_, Db>) -> Result<Vec<ListingInfo>, AppErro
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub struct MoneyInput {
-    pub currency: String,
     pub amount: String,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct Money {
+    pub amount: Decimal,
+    pub currency: String,
 }
 
 #[derive(Debug, Deserialize, Type)]
@@ -580,17 +586,17 @@ fn per_slice(amount: Decimal, fee: Decimal) -> Decimal {
     fee * slices
 }
 
-// TODO: make currency aware?
 #[tauri::command]
 #[specta::specta]
 pub fn broker_fee_hint(
     broker_type: Option<BrokerType>,
+    listing_currency: String,
     quantity: String,
     unit_price: String,
     instrument_type: InstrumentType,
     mic: String,
     fx_rate: String,
-) -> Result<Option<Decimal>, AppError> {
+) -> Result<Option<Money>, AppError> {
     let amount = parse_decimal_external(&quantity, "quantity")?
         * parse_decimal_external(&unit_price, "unit price")?;
 
@@ -600,19 +606,17 @@ pub fn broker_fee_hint(
             amount * parse_decimal_external(&fx_rate, "fx rate")?,
             &mic,
         ),
-        Some(BrokerType::Medirect) => medirect_broker_fee(&instrument_type, amount, &mic),
+        Some(BrokerType::Medirect) => {
+            medirect_broker_fee(&instrument_type, &listing_currency, amount, &mic)
+        }
         _ => None,
     };
 
     Ok(hint)
 }
 
-fn rebel_broker_fee(
-    instrument_type: &InstrumentType,
-    amount: Decimal,
-    mic: &str,
-) -> Option<Decimal> {
-    match (instrument_type, mic) {
+fn rebel_broker_fee(instrument_type: &InstrumentType, amount: Decimal, mic: &str) -> Option<Money> {
+    let amount = match (instrument_type, mic) {
         // Euronext Brussels
         (InstrumentType::Stock, "XBRU") if amount <= d(2500) => Some(d(3)),
         (InstrumentType::Stock, "XBRU") => Some(per_slice(amount, d(10))),
@@ -643,64 +647,74 @@ fn rebel_broker_fee(
         (InstrumentType::Etf, "XETR" | "XFRA") => Some(per_slice(amount, d(15))),
 
         _ => None,
-    }
+    };
+
+    amount.map(|n| Money {
+        amount: n,
+        currency: "EUR".to_string(),
+    })
 }
 
+// https://www.medirect.be/wp-content/uploads/Tariffs-charges-NL.pdf
 fn medirect_broker_fee(
     instrument_type: &InstrumentType,
+    listing_currency: &str,
     amount: Decimal,
     mic: &str,
-) -> Option<Decimal> {
+) -> Option<Money> {
     match instrument_type {
-        InstrumentType::Etf | InstrumentType::Fund => Some(Decimal::ZERO),
-        // Stocks: 0.15% commission with currency-specific minimum fees
+        InstrumentType::Etf | InstrumentType::Fund => Some(Money {
+            amount: Decimal::ZERO,
+            currency: "EUR".to_string(),
+        }),
+        // Stocks: 0.15% with a minimum based on MIC
         InstrumentType::Stock => {
             let percentage_fee = amount * (d(15) / d(10_000));
 
-            let min_fee = match mic {
+            let (min_amount, currency) = match mic {
                 // EUR min: 2.50
                 "XBRU" | "XPAR" | "XAMS" | "XETR" | "XFRA" | "XLIS" | "XMAD" | "XHEL" | "XMIL" => {
-                    Some(d(250) / d(100))
+                    Some((d(250) / d(100), "EUR"))
                 }
                 // USD min: 2.50
-                "XNAS" | "XNYS" | "XASE" | "XARC" => Some(d(250) / d(100)),
+                "XNAS" | "XNYS" | "XASE" | "XARC" => Some((d(250) / d(100), "USD")),
                 // GBP min: 2.50
-                "XLON" => Some(d(250) / d(100)),
+                "XLON" => Some((d(250) / d(100), "GBP")),
                 // CHF min: 2.50
-                "XSWX" => Some(d(250) / d(100)),
+                "XSWX" => Some((d(250) / d(100), "CHF")),
                 // NOK min: 30
-                "XOSL" => Some(d(30)),
+                "XOSL" => Some((d(30), "NOK")),
                 // SEK min: 30
-                "XSTO" => Some(d(30)),
+                "XSTO" => Some((d(30), "SEK")),
                 // DKK min: 20
-                "XCSE" => Some(d(20)),
+                "XCSE" => Some((d(20), "DKK")),
                 _ => None,
             }?;
 
-            Some(percentage_fee.max(min_fee))
+            Some(Money {
+                amount: percentage_fee.max(min_amount),
+                currency: currency.to_string(),
+            })
         }
 
-        // Bonds: 0.20% commission with currency-specific minimum fees
+        // Bonds: 0.20% with a minimum based on denomination
         InstrumentType::Bond => {
             let percentage_fee = amount * (d(20) / d(10_000));
 
-            let min_fee = match mic {
-                // EUR min: 15
-                "XBRU" | "XPAR" | "XAMS" | "XETR" | "XFRA" | "XLIS" | "XMAD" | "XHEL" | "XMIL" => {
-                    Some(d(15))
-                }
-                // USD min: 15
-                "XNAS" | "XNYS" | "XASE" | "XARC" => Some(d(15)),
-                // GBP min: 15
-                "XLON" => Some(d(15)),
-                // CHF min: 15
-                "XSWX" => Some(d(15)),
-                // NOK min: 150
-                "XOSL" => Some(d(150)),
+            let min_fee = match listing_currency {
+                "EUR" => Some(d(15)),
+                "USD" => Some(d(15)),
+                "GBP" => Some(d(15)),
+                "NOK" => Some(d(150)),
+                "CHF" => Some(d(15)),
+                "AUD" => Some(d(15)),
                 _ => None,
             }?;
 
-            Some(percentage_fee.max(min_fee))
+            Some(Money {
+                amount: percentage_fee.max(min_fee),
+                currency: listing_currency.to_string(),
+            })
         }
 
         _ => None,
