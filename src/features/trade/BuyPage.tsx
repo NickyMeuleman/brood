@@ -1,4 +1,6 @@
 import { useStore } from "@tanstack/react-form";
+import { useMemo } from "react";
+import type { MoneyInput } from "@/bindings";
 import { QueryError } from "@/components/QueryError";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
@@ -45,13 +47,6 @@ const BuyPage = () => {
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
 
-	useFieldHint(
-		f,
-		"unit_price.currency",
-		listingCurrency ? listingCurrency : null,
-	);
-	useFieldHint(f, "tob_fee.currency", "EUR");
-
 	const isForeignCurrency = Boolean(
 		listingCurrency && listingCurrency !== "EUR",
 	);
@@ -64,12 +59,14 @@ const BuyPage = () => {
 		isLoading: fxLoading,
 	} = useFx(executedAt, listingCurrency || "EUR");
 
-	const { data: priceHint } = usePrice(executedAt, listingId);
-	useFieldHint(
-		f,
-		"unit_price.amount",
-		priceHint != null ? Number(priceHint).toFixed(2) : null,
-	);
+	const { data: unitPriceHint } = usePrice(executedAt, listingId);
+	const unitPriceHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: listingCurrency ?? "EUR",
+			amount: unitPriceHint != null ? Number(unitPriceHint).toFixed(2) : "",
+		};
+	}, [listingCurrency, unitPriceHint]);
+	useFieldHint(f, "unit_price", unitPriceHintValue);
 
 	const tobHint = useTobHint(
 		quantity,
@@ -78,7 +75,13 @@ const BuyPage = () => {
 		listing?.tob_rate_hint,
 		fxRate,
 	);
-	useFieldHint(f, "tob_fee.amount", tobHint);
+	const tobHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: "EUR",
+			amount: Number(tobHint || "0").toFixed(2),
+		};
+	}, [tobHint]);
+	useFieldHint(f, "tob_fee", tobHintValue);
 
 	const { data: brokerFeeHint } = useBrokerFee(
 		broker?.broker_type || null,
@@ -89,17 +92,13 @@ const BuyPage = () => {
 		listing?.exchange_mic || "XAMS",
 		fxRate || "1",
 	);
-
-	useFieldHint(
-		f,
-		"broker_fee.currency",
-		brokerFeeHint?.currency ? brokerFeeHint?.currency : null,
-	);
-	useFieldHint(
-		f,
-		"broker_fee.amount",
-		brokerFeeHint?.amount ? Number(brokerFeeHint.amount).toFixed(2) : null,
-	);
+	const brokerFeeHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: brokerFeeHint?.currency || "EUR",
+			amount: Number(brokerFeeHint?.amount || "0").toFixed(2),
+		};
+	}, [brokerFeeHint]);
+	useFieldHint(f, "broker_fee", brokerFeeHintValue);
 
 	const base = Number(quantity) * Number(unitPrice.amount);
 
