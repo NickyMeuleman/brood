@@ -10,7 +10,7 @@ export const SubmitButton = ({ label }: { label: string }) => {
 				return {
 					canSubmit: state.canSubmit,
 					isSubmitting: state.isSubmitting,
-					isInvalid: !state.isValid,
+					isInvalid: !state.isValid && !state.isPristine,
 					isPristine: state.isPristine,
 				};
 			}}
