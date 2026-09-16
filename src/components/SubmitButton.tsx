@@ -11,13 +11,14 @@ export const SubmitButton = ({ label }: { label: string }) => {
 					canSubmit: state.canSubmit,
 					isSubmitting: state.isSubmitting,
 					isInvalid: !state.isValid,
+					isPristine: state.isPristine,
 				};
 			}}
-			children={({ canSubmit, isSubmitting, isInvalid }) => {
+			children={({ canSubmit, isSubmitting, isInvalid, isPristine }) => {
 				return (
 					<Button
 						type="submit"
-						disabled={!canSubmit || isSubmitting}
+						disabled={!canSubmit || isSubmitting || isPristine}
 						aria-invalid={isInvalid}
 					>
 						{isSubmitting ? "..." : label}

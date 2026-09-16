@@ -1,35 +1,48 @@
 import { formOptions } from "@tanstack/react-form";
 import { z } from "zod";
-import type { MoneyInput } from "@/bindings";
 
 // money is handled as string to preserve accuracy
-const DECIMAL_RE = /^\d+(\.\d+)?$/;
-const isZero = (v: string) => /^0+(\.0*)?$/.test(v);
-const isPositiveDecimal = (v: string) => DECIMAL_RE.test(v) && !isZero(v);
+// because else 0.1 + 0.2 != 0.3, floating points! amirite?
+const DECIMAL_SHAPE_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;
 
-const positiveDecimal = z
+const decimal = z
 	.string()
 	.trim()
+	.refine(
+		(v) => v === "" || DECIMAL_SHAPE_RE.test(v),
+		"Must be a valid number",
+	);
+
+const nonNegativeDecimal = decimal.refine(
+	(v) => Number(v) >= 0,
+	"Cannot be negative",
+);
+
+const positiveDecimal = nonNegativeDecimal
 	.min(1, "Required")
-	.refine(isPositiveDecimal, "Must be a positive number");
-
-const currencyCode = z.string().trim().min(1, "Currency required");
-
-export const moneyInput = z.object({
-	currency: currencyCode,
-	amount: positiveDecimal,
-}) satisfies z.ZodType<MoneyInput>;
-
-export const optionalMoneyInput = moneyInput.nullable();
+	.refine((v) => Number(v) > 0, "Must be greater than zero");
 
 export const buySchema = z.object({
 	listing_id: z.int().positive("Choose a listing"),
 	broker_id: z.int().positive("Choose a broker"),
 	quantity: positiveDecimal,
 	executed_at: z.iso.datetime(),
-	unit_price: moneyInput,
-	broker_fee: optionalMoneyInput,
-	tob_fee: optionalMoneyInput,
+	unit_price: z.object({
+		currency: z.currencyCode(),
+		amount: positiveDecimal,
+	}),
+	broker_fee: z
+		.object({
+			currency: z.currencyCode(),
+			amount: nonNegativeDecimal,
+		})
+		.nullable(),
+	tob_fee: z
+		.object({
+			currency: z.currencyCode(),
+			amount: nonNegativeDecimal,
+		})
+		.nullable(),
 });
 
 const buyDefaultValues: z.infer<typeof buySchema> = {
@@ -45,8 +58,6 @@ const buyDefaultValues: z.infer<typeof buySchema> = {
 export const buyFormOpts = formOptions({
 	defaultValues: buyDefaultValues,
 	validators: {
-		// validate on mount or canSubmit starts as true
-		onMount: buySchema,
 		onChange: buySchema,
 	},
 	canSubmitWhenInvalid: false,
@@ -85,8 +96,6 @@ export const sellFormOpts = formOptions({
 		executed_at: new Date().toISOString(),
 	},
 	validators: {
-		// validate on mount or canSubmit starts as true
-		onMount: buildSellSchema(undefined),
 		onChange: buildSellSchema(undefined),
 	},
 	canSubmitWhenInvalid: false,
