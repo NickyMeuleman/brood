@@ -1,3 +1,4 @@
+import { useStore } from "@tanstack/react-form";
 import type { MoneyInput } from "@/bindings";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
@@ -26,12 +27,30 @@ export const MoneyField = ({
 	currencyDisabled?: boolean;
 }) => {
 	const field = useFieldContext<MoneyInput | null>();
-	const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
 	const { data: currencies = [] } = useCurrencies();
 
 	const fieldValue = field.state.value;
 	const currency = fieldValue?.currency ?? "EUR";
 	const amount = fieldValue?.amount ?? "";
+
+	const { errors, isInvalid } = useStore(field.form.store, (state) => {
+		const prefix = field.name;
+		const entries = Object.entries(state.fieldMeta).filter(
+			([key]) => key === prefix || key.startsWith(`${prefix}.`),
+		);
+
+		const errors = entries
+			.flatMap(([, meta]) => meta?.errors ?? [])
+			.filter(Boolean);
+
+		const isTouched =
+			entries.some(([, meta]) => meta?.isTouched) || state.isSubmitted;
+
+		return {
+			errors: errors,
+			isInvalid: isTouched && errors.length > 0,
+		};
+	});
 
 	return (
 		<Field data-invalid={isInvalid}>
@@ -91,7 +110,7 @@ export const MoneyField = ({
 						if (!open) field.handleBlur();
 					}}
 				>
-					<SelectTrigger className="w-fit min-w-8">
+					<SelectTrigger className="w-fit min-w-8" aria-invalid={isInvalid}>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
@@ -105,7 +124,7 @@ export const MoneyField = ({
 					</SelectContent>
 				</Select>
 			</div>
-			{isInvalid && <FieldError errors={field.state.meta.errors} />}
+			{isInvalid && <FieldError errors={errors} />}
 		</Field>
 	);
 };
