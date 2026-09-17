@@ -225,24 +225,15 @@ const SellPage = () => {
 								{(field) => <field.DecimalField label="Quantity" />}
 							</f.AppField>
 							<f.AppField name="unit_price">
-								{(field) => (
-									<field.DecimalField
-										label="Unit price"
-										currencyCode={listingCurrency}
-									/>
-								)}
+								{(field) => <field.MoneyField label="Unit price" />}
 							</f.AppField>
 						</div>
 						<div className="grid grid-cols-2 gap-6">
 							<f.AppField name="broker_fee">
-								{(field) => (
-									<field.DecimalField label="Broker fee" currencyCode="eur" />
-								)}
+								{(field) => <field.MoneyField label="Broker fee" />}
 							</f.AppField>
 							<f.AppField name="tob_fee">
-								{(field) => (
-									<field.DecimalField label="TOB" currencyCode="eur" />
-								)}
+								{(field) => <field.MoneyField label="TOB" />}
 							</f.AppField>
 						</div>
 						<f.AppForm>
