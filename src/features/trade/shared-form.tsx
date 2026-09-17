@@ -63,38 +63,45 @@ export const buyFormOpts = formOptions({
 	canSubmitWhenInvalid: false,
 });
 
-const optionalDecimal = z
-	.string()
-	.transform((v) => (v === "" ? null : v))
-	.refine(
-		(v) =>
-			v === null || v === "" || (!Number.isNaN(Number(v)) && Number(v) > 0),
-		"Must be a positive number",
-	);
 export const buildSellSchema = (maxQty?: string) =>
 	z.object({
-		listing_id: z.int().positive("Choose a holding"),
+		listing_id: z.int().positive("Choose a listing"),
 		broker_id: z.int().positive("Choose a broker"),
 		quantity: positiveDecimal.refine(
 			(v) => maxQty === undefined || Number(v) <= Number(maxQty),
 			"Cannot exceed the amount you held at the selected execution time.",
 		),
 		executed_at: z.iso.datetime(),
-		unit_price: positiveDecimal,
-		broker_fee: optionalDecimal,
-		tob_fee: optionalDecimal,
+		unit_price: z.object({
+			currency: z.currencyCode(),
+			amount: positiveDecimal,
+		}),
+		broker_fee: z
+			.object({
+				currency: z.currencyCode(),
+				amount: nonNegativeDecimal,
+			})
+			.nullable(),
+		tob_fee: z
+			.object({
+				currency: z.currencyCode(),
+				amount: nonNegativeDecimal,
+			})
+			.nullable(),
 	});
 
+const sellDefaultValues: z.infer<ReturnType<typeof buildSellSchema>> = {
+	listing_id: 0,
+	broker_id: 0,
+	quantity: "",
+	unit_price: { currency: "EUR", amount: "" },
+	broker_fee: null,
+	tob_fee: null,
+	executed_at: new Date().toISOString(),
+};
+
 export const sellFormOpts = formOptions({
-	defaultValues: {
-		listing_id: 0,
-		broker_id: 0,
-		quantity: "",
-		unit_price: "",
-		broker_fee: "",
-		tob_fee: "",
-		executed_at: new Date().toISOString(),
-	},
+	defaultValues: sellDefaultValues,
 	validators: {
 		onChange: buildSellSchema(undefined),
 	},
