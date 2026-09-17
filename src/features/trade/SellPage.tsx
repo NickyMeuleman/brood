@@ -100,6 +100,8 @@ const SellPage = () => {
 		listingCurrency && listingCurrency !== "EUR",
 	);
 
+	const broker = brokers.find((b) => b.id === brokerId);
+
 	const maxQty = holding?.quantity ?? undefined;
 	const quantitySchema = useMemo(
 		() => buildSellSchema(maxQty).shape.quantity,
@@ -120,9 +122,9 @@ const SellPage = () => {
 		fxRate,
 	);
 
-	// TODO: make broker specific
 	const { data: brokerFeeHint } = useBrokerFee(
-		"re=bel",
+		broker?.broker_type || null,
+		listingCurrency || "EUR",
 		quantity,
 		unitPrice,
 		holding?.instrument_type || "STOCK",
