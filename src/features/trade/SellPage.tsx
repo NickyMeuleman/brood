@@ -52,12 +52,11 @@ const SellPage = () => {
 	const brokerFee = useStore(f.store, (state) => state.values.broker_fee);
 	const tobFee = useStore(f.store, (state) => state.values.tob_fee);
 
-	// TODO: make broker specific. (filter?)
 	const {
 		data: heldPositions,
 		isLoading: heldPositionsLoading,
 		error: heldPositionsError,
-	} = useHeldPositions(executedAt);
+	} = useHeldPositions(executedAt, brokerId);
 	const { data: listings = [] } = useListings();
 	const { data: brokers = [] } = useBrokers();
 

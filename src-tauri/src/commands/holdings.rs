@@ -410,6 +410,7 @@ pub struct HeldPosition {
     pub listing_id: i64,
     pub isin: String,
     pub ticker: String,
+    pub broker_id: i64,
     pub exchange_mic: String,
     pub currency_code: String,
     pub instrument_name: String,
@@ -425,6 +426,7 @@ pub struct HeldPosition {
 pub async fn get_held_positions(
     db: State<'_, Db>,
     as_of: DateTime<Utc>,
+    broker_id: Option<i64>,
 ) -> Result<Vec<HeldPosition>, AppError> {
     let as_of_date = as_of.naive_utc().date();
     let lot_records = load_lot_records(&db.pool).await?;
@@ -436,6 +438,7 @@ pub async fn get_held_positions(
                 listing_id: lot.listing_id,
                 isin: lot.isin.clone(),
                 ticker: lot.ticker.clone(),
+                broker_id: lot.broker_id_as_of(as_of_date),
                 exchange_mic: lot.exchange_mic.clone(),
                 currency_code: lot.currency_code.clone(),
                 instrument_name: lot.name.clone(),
@@ -448,7 +451,9 @@ pub async fn get_held_positions(
     let mut positions: Vec<HeldPosition> = acc
         .into_values()
         .filter(|p| p.quantity > Decimal::ZERO)
+        .filter(|p| broker_id.map_or(true, |id| p.broker_id == id))
         .collect();
     positions.sort_unstable_by(|a, b| a.ticker.cmp(&b.ticker));
+
     Ok(positions)
 }

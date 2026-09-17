@@ -16,7 +16,7 @@ export const queryKeys = {
 	brokerFee: ["brokerFee"] as const,
 	brokerFeeFor: (
 		broker: BrokerType | null,
-    listing_currency: string,
+		listing_currency: string,
 		quantity: string,
 		unitPrice: string,
 		instrumentType: InstrumentType,
@@ -26,7 +26,7 @@ export const queryKeys = {
 		[
 			"brokerFee",
 			broker,
-      listing_currency,
+			listing_currency,
 			quantity,
 			unitPrice,
 			instrumentType,
@@ -40,7 +40,8 @@ export const queryKeys = {
 	listingMeta: (mic: string, ticker: string) =>
 		["listingMeta", mic, ticker] as const,
 	heldPositions: ["heldPositions"] as const,
-	heldPositionsAsOf: (asOf: string) => ["heldPositions", asOf] as const,
+	heldPositionsAsOf: (asOf: string, brokerId?: number) =>
+		["heldPositions", asOf, brokerId] as const,
 	sellPreview: ["sellPreview"] as const,
 	sellPreviewFor: (
 		listingId: number,
@@ -62,5 +63,5 @@ export const queryKeys = {
 			tobFee,
 		] as const,
 	brokers: ["brokers"] as const,
-  currencies: ["currencies"] as const
+	currencies: ["currencies"] as const,
 };
