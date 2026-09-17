@@ -2,6 +2,7 @@ import { useStore } from "@tanstack/react-form";
 import { useMemo } from "react";
 import type { MoneyInput } from "@/bindings";
 import { QueryError } from "@/components/QueryError";
+import { Badge } from "@/components/ui/badge";
 import { FieldGroup } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import { buyFormOpts, buySchema } from "@/features/trade/shared-form.tsx";
@@ -14,7 +15,8 @@ import { useFx } from "@/hooks/use-fx";
 import { useListings } from "@/hooks/use-listings";
 import { usePrice } from "@/hooks/use-price";
 import { useTobHint } from "@/hooks/use-tob-hint";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
+import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
 
 const BuyPage = () => {
 	const buy = useBuy();
@@ -198,6 +200,33 @@ const BuyPage = () => {
 				<div className="flex flex-col gap-4 rounded-md bg-muted p-6">
 					<div className="space-y-4">
 						<p className="font-semibold text-lg">Price Summary</p>
+						<div className="flex w-full items-center gap-3">
+							{listing && (
+								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+									<TruncatedTooltip>{listing.instrument_name}</TruncatedTooltip>
+									<div className="flex items-center gap-1.5 whitespace-nowrap font-normal text-muted-foreground text-sm">
+										<Badge
+											variant="ghost"
+											className={cn(
+												"bg-primary font-mono text-primary-foreground text-sm tracking-wider",
+											)}
+										>
+											{listing.ticker}
+										</Badge>
+										<span className="opacity-60">·</span>
+										<span>
+											{MIC_LABEL[listing.exchange_mic] ?? listing.exchange_mic}
+										</span>
+										{isForeignCurrency && (
+											<>
+												<span className="opacity-60">·</span>
+												<span>{getCurrencySymbol(listing.currency_code)}</span>
+											</>
+										)}
+									</div>
+								</div>
+							)}
+						</div>
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">Base</span>
 							<span className="font-semibold text-base">
