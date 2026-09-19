@@ -1,6 +1,6 @@
 use crate::commands::broker::BrokerType;
+use crate::commands::fetch_currencies;
 use crate::commands::tax::{SellComputation, compute_sell};
-use crate::commands::{Currency, fetch_currencies};
 use crate::db::Db;
 use crate::db::types::InstrumentType;
 use crate::sync::backfill;
@@ -107,6 +107,7 @@ pub struct CreateBuyTradeInput {
     pub tob_fee: Option<MoneyInput>,
 }
 
+// TODO: restructure, reorder, reuse parts for sell, use Money type
 async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<(), AppError> {
     let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
     if quantity <= Decimal::ZERO {
@@ -120,7 +121,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     let unit_price_str = unit_price.to_string();
 
     let parse_optional_fee =
-        |raw: Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+        |raw: &Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
             match raw {
                 None => Ok(None),
                 Some(v) if v.amount.is_empty() || v.amount == "0" => Ok(None),
@@ -145,12 +146,12 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
             fee.currency
         )));
     }
-    let broker_fee = parse_optional_fee(fields.broker_fee, "broker_fee")?;
+    let broker_fee = parse_optional_fee(&fields.broker_fee, "broker_fee")?;
 
     if matches!(&fields.tob_fee, Some(fee) if fee.currency != "EUR") {
         return Err(AppError::Validation("TOB fee currency must be EUR".into()));
     }
-    let tob_fee = parse_optional_fee(fields.tob_fee, "tob_fee")?;
+    let tob_fee = parse_optional_fee(&fields.tob_fee, "tob_fee")?;
 
     let executed_at = fields.executed_at.naive_utc();
 
@@ -178,26 +179,8 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         ));
     }
 
-    let broker = sqlx::query!(
-        r#"
-        SELECT
-            name,
-            broker_type as "broker_type: BrokerType"
-        FROM broker
-        WHERE id = ?1
-        "#,
-        fields.broker_id
-    )
-    .fetch_optional(pool)
-    .await?
-    .ok_or(AppError::NotFound(format!(
-        "Broker id {} not found",
-        fields.broker_id
-    )))?;
-
     let mut tx = pool.begin().await?;
 
-    // settlement_date and settlement_cash_id are deferred (cash tracking is out of scope).
     let trade_id = sqlx::query!(
         r#"
         INSERT INTO trade
@@ -217,12 +200,10 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
 
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
-        // TODO: allow frontend choice (with hint)
-        let broker_fee_currency = match broker.broker_type {
-            Some(BrokerType::Rebel) => "EUR",
-            Some(BrokerType::Medirect) => &listing.currency_code,
-            _ => "EUR",
-        };
+        let broker_fee_currency = &fields
+            .broker_fee
+            .map(|f| f.currency)
+            .unwrap_or("EUR".into());
         sqlx::query!(
             r#"
             INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
@@ -236,7 +217,6 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
         .await?;
     }
 
-    // TOB is always charged in EUR.
     if let Some(fee) = tob_fee {
         let fee_str = fee.to_string();
         sqlx::query!(
@@ -338,10 +318,10 @@ pub struct CreateSellTradeInput {
     pub listing_id: i64,
     pub broker_id: i64,
     pub quantity: String,
-    pub unit_price: String,
+    pub unit_price: MoneyInput,
     pub executed_at: DateTime<Utc>,
-    pub broker_fee: Option<String>,
-    pub tob_fee: Option<String>,
+    pub broker_fee: Option<MoneyInput>,
+    pub tob_fee: Option<MoneyInput>,
 }
 
 /// Writes are gated entirely on `compute_sell`'s success: if the tax
@@ -350,21 +330,27 @@ pub async fn sell_core(
     pool: &Pool<Sqlite>,
     fields: CreateSellTradeInput,
 ) -> Result<SellComputation, AppError> {
+    // TODO: simplify, restructure, make less redundant (only do checks once for example)
     let computation = compute_sell(pool, &fields).await?;
 
     let quantity = parse_decimal_external(&fields.quantity, "quantity")?;
+    if quantity <= Decimal::ZERO {
+        return Err(AppError::Validation("quantity must be positive".into()));
+    }
     let quantity_str = quantity.to_string();
-    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
+    let unit_price = parse_decimal_external(&fields.unit_price.amount, "unit_price")?;
+    if unit_price <= Decimal::ZERO {
+        return Err(AppError::Validation("unit_price must be positive".into()));
+    }
     let unit_price_str = unit_price.to_string();
-    let executed_at = fields.executed_at.naive_utc();
 
     let parse_optional_fee =
-        |raw: Option<String>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+        |raw: Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
             match raw {
                 None => Ok(None),
-                Some(v) if v.is_empty() || v == "0" => Ok(None),
+                Some(v) if v.amount.is_empty() || v.amount == "0" => Ok(None),
                 Some(v) => {
-                    let d = parse_decimal_external(&v, ctx)?;
+                    let d = parse_decimal_external(&v.amount, ctx)?;
                     if d < Decimal::ZERO {
                         return Err(AppError::Validation(format!("{ctx} must be non-negative")));
                     }
@@ -372,8 +358,26 @@ pub async fn sell_core(
                 }
             }
         };
+
+    let currencies = fetch_currencies(pool).await?;
+    if let Some(fee) = fields
+        .broker_fee
+        .as_ref()
+        .filter(|f| !currencies.iter().any(|c| c.code == f.currency))
+    {
+        return Err(AppError::Validation(format!(
+            "Invalid broker fee currency: {}",
+            fee.currency
+        )));
+    }
     let broker_fee = parse_optional_fee(fields.broker_fee, "broker_fee")?;
+
+    if matches!(&fields.tob_fee, Some(fee) if fee.currency != "EUR") {
+        return Err(AppError::Validation("TOB fee currency must be EUR".into()));
+    }
     let tob_fee = parse_optional_fee(fields.tob_fee, "tob_fee")?;
+
+    let executed_at = fields.executed_at.naive_utc();
 
     let mut tx = pool.begin().await?;
 
@@ -394,7 +398,6 @@ pub async fn sell_core(
     .await?
     .last_insert_rowid();
 
-    // Both fee types are always EUR — TOB by law and re=bel only charges EUR too.
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
         sqlx::query!(
