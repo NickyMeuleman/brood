@@ -1,5 +1,6 @@
 import { useStore } from "@tanstack/react-form";
 import { useMemo } from "react";
+import { toast } from "sonner";
 import type { MoneyInput } from "@/bindings";
 import { QueryError } from "@/components/QueryError";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +25,14 @@ const BuyPage = () => {
 	const f = useAppForm({
 		...buyFormOpts,
 		onSubmit: ({ value }) => {
-			const parsed = buySchema.parse(value);
-			buy.mutate(parsed);
+			const parsed = buySchema.safeParse(value);
+			if (!parsed.success) {
+				toast.error("Buy form submitted with invalid data", {
+					description: parsed.error.message,
+				});
+				return;
+			}
+			buy.mutate(parsed.data);
 		},
 		formId: "buy_form",
 	});
