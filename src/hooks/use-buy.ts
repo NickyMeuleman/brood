@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { type CreateBuyTradeInput, commands } from "@/bindings";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
-import { type CreateBuyTradeInput, commands } from "../bindings";
 
 export function useBuy() {
 	const queryClient = useQueryClient();
