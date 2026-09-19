@@ -8,7 +8,7 @@ use crate::{
     AppError,
     commands::{
         lot_data::{LotRecord, load_lot_records, match_fifo_lots},
-        trade::CreateSellTradeInput,
+        trade::{CreateSellTradeInput, MoneyInput},
     },
     parse_decimal_external, parse_decimal_internal,
 };
@@ -243,18 +243,18 @@ pub async fn compute_sell(
     if quantity <= Decimal::ZERO {
         return Err(AppError::Validation("quantity must be positive".into()));
     }
-    let unit_price = parse_decimal_external(&fields.unit_price, "unit_price")?;
+    let unit_price = parse_decimal_external(&fields.unit_price.amount, "unit_price")?;
     if unit_price <= Decimal::ZERO {
         return Err(AppError::Validation("unit_price must be positive".into()));
     }
 
     let parse_optional_fee =
-        |raw: Option<String>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+        |raw: &Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
             match raw {
                 None => Ok(None),
-                Some(v) if v.is_empty() || v == "0" => Ok(None),
+                Some(v) if v.amount.is_empty() || v.amount == "0" => Ok(None),
                 Some(v) => {
-                    let d = parse_decimal_external(&v, ctx)?;
+                    let d = parse_decimal_external(&v.amount, ctx)?;
                     if d < Decimal::ZERO {
                         return Err(AppError::Validation(format!("{ctx} must be non-negative")));
                     }
@@ -262,8 +262,8 @@ pub async fn compute_sell(
                 }
             }
         };
-    let broker_fee = parse_optional_fee(fields.broker_fee.clone(), "broker_fee")?;
-    let tob_fee = parse_optional_fee(fields.tob_fee.clone(), "tob_fee")?;
+    let broker_fee = parse_optional_fee(&fields.broker_fee.clone(), "broker_fee")?;
+    let tob_fee = parse_optional_fee(&fields.tob_fee.clone(), "tob_fee")?;
 
     // ---- resolve listing ---------------------------------------
     let listing = sqlx::query!(
@@ -683,6 +683,7 @@ mod sell_integration_tests {
         executed_at: &str,
         qty: &str,
         price: &str,
+        currency: &str,
     ) -> i64 {
         let executed_at: NaiveDateTime = executed_at
             .parse()
@@ -710,13 +711,14 @@ mod sell_integration_tests {
             INSERT INTO lot
                 (broker_id_at_acquisition, instrument_id, listing_id,
                  source_trade_id, qty_at_acquisition, price_currency_code, price_per_unit)
-            VALUES (?1, ?2, ?3, ?4, ?5, 'EUR', ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
             broker_id,
             instrument_id,
             listing_id,
             trade_id,
             qty,
+            currency,
             price
         )
         .execute(pool)
@@ -772,6 +774,7 @@ mod sell_integration_tests {
             "2024-06-01T10:00:00",
             "10",
             "25.00",
+            "EUR",
         )
         .await;
 
@@ -786,6 +789,7 @@ mod sell_integration_tests {
             "2026-03-01T10:00:00",
             "5",
             "40.00",
+            "EUR",
         )
         .await;
 
@@ -793,7 +797,10 @@ mod sell_integration_tests {
             listing_id,
             broker_id,
             quantity: "12".into(),
-            unit_price: "50.00".into(),
+            unit_price: MoneyInput {
+                amount: "50.00".into(),
+                currency: "EUR".into(),
+            },
             executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
             broker_fee: None,
             tob_fee: None,
@@ -869,6 +876,7 @@ mod sell_integration_tests {
             "2025-06-01T10:00:00",
             "5",
             "20.00",
+            "EUR",
         )
         .await;
         insert_tax_snapshot(&pool, instrument_id, broker_a_id, "5", "20.00", "24.00").await;
@@ -882,6 +890,7 @@ mod sell_integration_tests {
             "2026-01-15T10:00:00",
             "5",
             "30.00",
+            "EUR",
         )
         .await;
 
@@ -889,7 +898,10 @@ mod sell_integration_tests {
             listing_id,
             broker_id: broker_a_id,
             quantity: "5".into(),
-            unit_price: "50.00".into(),
+            unit_price: MoneyInput {
+                amount: "50.00".into(),
+                currency: "EUR".into(),
+            },
             executed_at: "2026-09-01T10:00:00Z".parse().unwrap(),
             broker_fee: None,
             tob_fee: None,
