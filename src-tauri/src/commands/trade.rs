@@ -345,7 +345,7 @@ pub async fn sell_core(
     let unit_price_str = unit_price.to_string();
 
     let parse_optional_fee =
-        |raw: Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
+        |raw: &Option<MoneyInput>, ctx: &'static str| -> Result<Option<Decimal>, AppError> {
             match raw {
                 None => Ok(None),
                 Some(v) if v.amount.is_empty() || v.amount == "0" => Ok(None),
@@ -370,14 +370,38 @@ pub async fn sell_core(
             fee.currency
         )));
     }
-    let broker_fee = parse_optional_fee(fields.broker_fee, "broker_fee")?;
+    let broker_fee = parse_optional_fee(&fields.broker_fee, "broker_fee")?;
 
     if matches!(&fields.tob_fee, Some(fee) if fee.currency != "EUR") {
         return Err(AppError::Validation("TOB fee currency must be EUR".into()));
     }
-    let tob_fee = parse_optional_fee(fields.tob_fee, "tob_fee")?;
+    let tob_fee = parse_optional_fee(&fields.tob_fee, "tob_fee")?;
 
     let executed_at = fields.executed_at.naive_utc();
+
+    // fetch listing info, do not trust frontend
+    let listing = sqlx::query!(
+        r#"
+        SELECT
+            instrument_id AS "instrument_id!",
+            currency_code AS "currency_code!"
+        FROM listing
+        WHERE id = ?1 AND delisted_at IS NULL
+        "#,
+        fields.listing_id
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AppError::NotFound(format!(
+        "Listing id {} not found (or delisted)",
+        fields.listing_id
+    )))?;
+
+    if fields.unit_price.currency != listing.currency_code {
+        return Err(AppError::Validation(
+            "Unit price currency does not match listing currency".into(),
+        ));
+    }
 
     let mut tx = pool.begin().await?;
 
@@ -400,13 +424,18 @@ pub async fn sell_core(
 
     if let Some(fee) = broker_fee {
         let fee_str = fee.to_string();
+        let broker_fee_currency = &fields
+            .broker_fee
+            .map(|f| f.currency)
+            .unwrap_or("EUR".into());
         sqlx::query!(
             r#"
             INSERT INTO trade_fee (trade_id, fee_type, amount, currency_code)
-            VALUES (?1, 'BROKER', ?2, 'EUR')
+            VALUES (?1, 'BROKER', ?2, ?3)
             "#,
             trade_id,
-            fee_str
+            fee_str,
+            broker_fee_currency
         )
         .execute(&mut *tx)
         .await?;
