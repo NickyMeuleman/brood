@@ -431,9 +431,9 @@ pub async fn get_held_positions(
     let as_of_date = as_of.naive_utc().date();
     let lot_records = load_lot_records(&db.pool).await?;
 
-    let mut acc: HashMap<i64, HeldPosition> = HashMap::new();
+    let mut acc: HashMap<(i64, i64), HeldPosition> = HashMap::new();
     for lot in lot_records.iter().filter(|l| l.is_active_at(as_of_date)) {
-        acc.entry(lot.listing_id)
+        acc.entry((lot.listing_id, lot.broker_id_as_of(as_of_date)))
             .or_insert_with(|| HeldPosition {
                 listing_id: lot.listing_id,
                 isin: lot.isin.clone(),

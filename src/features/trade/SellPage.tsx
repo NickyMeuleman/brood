@@ -62,10 +62,6 @@ const SellPage = () => {
 		error: heldPositionsError,
 	} = useHeldPositions(executedAt, brokerId);
 
-	// TODO: show holdings of same listing at different brokers correctly
-	// I think useHeldPositions is not properly broker specific, check rust cmd
-	console.log(heldPositions);
-
 	const sellableHoldings = useMemo<SellableHolding[]>(() => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
 		const candidates = new Map<string, SellableHolding>();
