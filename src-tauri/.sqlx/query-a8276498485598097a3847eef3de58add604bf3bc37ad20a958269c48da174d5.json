@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            name,\n            broker_type as \"broker_type: BrokerType\"\n        FROM broker\n        WHERE id = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "broker_type: BrokerType",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "a8276498485598097a3847eef3de58add604bf3bc37ad20a958269c48da174d5"
+}

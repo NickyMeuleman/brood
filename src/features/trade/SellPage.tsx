@@ -1,6 +1,7 @@
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import type { MoneyInput } from "@/bindings";
 import { QueryError } from "@/components/QueryError";
 import { Badge } from "@/components/ui/badge";
 import { FieldGroup } from "@/components/ui/field";
@@ -44,6 +45,9 @@ const SellPage = () => {
 		formId: "sell_form",
 	});
 
+	const { data: brokers = [] } = useBrokers();
+	const { data: listings = [] } = useListings();
+
 	const listingId = useStore(f.store, (state) => state.values.listing_id);
 	const brokerId = useStore(f.store, (state) => state.values.broker_id);
 	const quantity = useStore(f.store, (state) => state.values.quantity);
@@ -57,26 +61,32 @@ const SellPage = () => {
 		isLoading: heldPositionsLoading,
 		error: heldPositionsError,
 	} = useHeldPositions(executedAt, brokerId);
-	const { data: listings = [] } = useListings();
-	const { data: brokers = [] } = useBrokers();
 
-	// TODO: make broker specific.
+	// TODO: show holdings of same listing at different brokers correctly
+	// I think useHeldPositions is not properly broker specific, check rust cmd
+	console.log(heldPositions);
+
 	const sellableHoldings = useMemo<SellableHolding[]>(() => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
-		const candidates = new Map<number, SellableHolding>();
+		const candidates = new Map<string, SellableHolding>();
+
+		const listingKey = (brokerId: number, listingId: number): string =>
+			`${brokerId}-${listingId}`;
 
 		for (const p of heldPositions ?? []) {
-			candidates.set(p.listing_id, {
+			candidates.set(listingKey(p.broker_id, p.listing_id), {
 				...p,
 				tob_rate_hint: tobByIsin.get(p.isin) ?? null,
 			});
 		}
 
-		if (listingId > 0 && !candidates.has(listingId)) {
+		if (listingId > 0 && !candidates.has(listingKey(brokerId, listingId))) {
 			const listing = listings.find((l) => l.id === listingId);
 			if (listing) {
-				candidates.set(listingId, {
-					listing_id: listing.id,
+				candidates.set(listingKey(brokerId, listingId), {
+					listing_id: listingId,
+					// broker unkown, it's NOT at brokerId
+					broker_id: null,
 					isin: listing.isin,
 					ticker: listing.ticker,
 					exchange_mic: listing.exchange_mic,
@@ -92,7 +102,7 @@ const SellPage = () => {
 		return [...candidates.values()].sort((a, b) =>
 			a.ticker.localeCompare(b.ticker),
 		);
-	}, [heldPositions, listings, listingId, heldPositionsLoading]);
+	}, [heldPositions, listings, listingId, brokerId, heldPositionsLoading]);
 
 	const holding = sellableHoldings.find((h) => h.listing_id === listingId);
 	const listingCurrency = holding?.currency_code;
@@ -113,38 +123,49 @@ const SellPage = () => {
 		error: fxError,
 		isLoading: fxLoading,
 	} = useFx(executedAt, listingCurrency || "EUR");
-	const { data: priceHint } = usePrice(executedAt, listingId);
+
+	const { data: unitPriceHint } = usePrice(executedAt, listingId);
+	const unitPriceHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: listingCurrency ?? "EUR",
+			amount: unitPriceHint != null ? Number(unitPriceHint).toFixed(2) : "",
+		};
+	}, [listingCurrency, unitPriceHint]);
+	useFieldHint(f, "unit_price", unitPriceHintValue);
+
 	const tobHint = useTobHint(
 		quantity,
-		unitPrice,
+		unitPrice.amount,
 		"sell",
 		holding?.tob_rate_hint,
 		fxRate,
 	);
+	const tobHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: "EUR",
+			amount: Number(tobHint || "0").toFixed(2),
+		};
+	}, [tobHint]);
+	useFieldHint(f, "tob_fee", tobHintValue);
 
 	const { data: brokerFeeHint } = useBrokerFee(
 		broker?.broker_type || null,
 		listingCurrency || "EUR",
 		quantity,
-		unitPrice,
+		unitPrice.amount,
 		holding?.instrument_type || "STOCK",
 		holding?.exchange_mic || "XAMS",
 		fxRate || "1",
 	);
+	const brokerFeeHintValue: MoneyInput = useMemo(() => {
+		return {
+			currency: brokerFeeHint?.currency || "EUR",
+			amount: Number(brokerFeeHint?.amount || "0").toFixed(2),
+		};
+	}, [brokerFeeHint]);
+	useFieldHint(f, "broker_fee", brokerFeeHintValue);
 
-	useFieldHint(
-		f,
-		"unit_price",
-		priceHint != null ? Number(priceHint).toFixed(2) : null,
-	);
-	useFieldHint(
-		f,
-		"broker_fee",
-		brokerFeeHint != null ? Number(brokerFeeHint).toFixed(2) : null,
-	);
-	useFieldHint(f, "tob_fee", tobHint);
-
-	const base = Number(quantity) * Number(unitPrice);
+	const base = Number(quantity) * Number(unitPrice.amount);
 
 	let convertedBase: number | null;
 	if (!isForeignCurrency) {
@@ -155,10 +176,21 @@ const SellPage = () => {
 		convertedBase = null;
 	}
 
+	const isForeignBrokerCurrency =
+		brokerFee?.currency && brokerFee?.currency !== "EUR";
+	let convertedBroker: number | null;
+	if (brokerFee?.currency && !isForeignBrokerCurrency) {
+		convertedBroker = Number(brokerFee.amount);
+	} else if (fxRate) {
+		convertedBroker = Number(brokerFee?.amount || "0") * Number(fxRate);
+	} else {
+		convertedBroker = null;
+	}
+
 	const total =
-		convertedBase !== null
-			? convertedBase - Number(brokerFee) - Number(tobFee)
-			: null;
+		(convertedBase ?? 0) -
+		(convertedBroker ?? 0) -
+		Number(tobFee?.amount || "0");
 
 	const preview = useSellPreview({
 		listing_id: listingId,
@@ -190,6 +222,7 @@ const SellPage = () => {
 				>
 					<FieldGroup>
 						<f.AppField name="listing_id">
+							{/* TODO: show all holdings before a broker is selected? empty list on load is bad UX */}
 							{(field) => (
 								<field.HoldingPicker
 									label="Holding"
@@ -226,7 +259,12 @@ const SellPage = () => {
 								{(field) => <field.DecimalField label="Quantity" />}
 							</f.AppField>
 							<f.AppField name="unit_price">
-								{(field) => <field.MoneyField label="Unit price" />}
+								{(field) => (
+									<field.MoneyField
+										label="Unit price"
+										currencyDisabled={true}
+									/>
+								)}
 							</f.AppField>
 						</div>
 						<div className="grid grid-cols-2 gap-6">
@@ -234,7 +272,9 @@ const SellPage = () => {
 								{(field) => <field.MoneyField label="Broker fee" />}
 							</f.AppField>
 							<f.AppField name="tob_fee">
-								{(field) => <field.MoneyField label="TOB" />}
+								{(field) => (
+									<field.MoneyField label="TOB" currencyDisabled={true} />
+								)}
 							</f.AppField>
 						</div>
 						<f.AppForm>

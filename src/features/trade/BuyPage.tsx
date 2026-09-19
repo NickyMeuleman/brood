@@ -55,7 +55,6 @@ const BuyPage = () => {
 
 	const listing = listings.find((l) => l.id === listingId);
 	const listingCurrency = listing?.currency_code;
-
 	const isForeignCurrency = Boolean(
 		listingCurrency && listingCurrency !== "EUR",
 	);

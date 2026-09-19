@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            code\n        FROM\n            currency\n        ORDER BY\n           code ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "code",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bbb136b6c4bab56d63f67a32820ad2d03eab4bf5da7556de1234ed50cd13fba4"
+}
