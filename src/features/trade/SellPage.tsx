@@ -66,35 +66,50 @@ const SellPage = () => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
 		const candidates = new Map<string, SellableHolding>();
 
-		const listingKey = (brokerId: number, listingId: number): string =>
-			`${brokerId}-${listingId}`;
-
 		for (const p of heldPositions ?? []) {
-			candidates.set(listingKey(p.broker_id, p.listing_id), {
-				...p,
-				tob_rate_hint: tobByIsin.get(p.isin) ?? null,
-			});
-		}
-
-		if (listingId > 0 && !candidates.has(listingKey(brokerId, listingId))) {
-			const listing = listings.find((l) => l.id === listingId);
-			if (listing) {
-				candidates.set(listingKey(brokerId, listingId), {
-					listing_id: listingId,
-					// broker unkown, it's NOT at brokerId
-					broker_id: null,
-					isin: listing.isin,
-					ticker: listing.ticker,
-					exchange_mic: listing.exchange_mic,
-					currency_code: listing.currency_code,
-					instrument_name: listing.instrument_name,
-					instrument_type: listing.instrument_type,
-					// 0 is confirmed not held, null is unknown (while loading)
-					quantity: heldPositionsLoading ? null : "0",
-					tob_rate_hint: listing.tob_rate_hint,
+			// aggregate by listing only while broker isn't selected
+			const key = brokerId
+				? `${p.broker_id}-${p.listing_id}`
+				: `${p.listing_id}`;
+			const existing = candidates.get(key);
+			if (existing) {
+				candidates.set(key, {
+					...existing,
+					quantity: (
+						Number(existing?.quantity || "0") + Number(p?.quantity || "0")
+					).toString(),
+					tob_rate_hint: tobByIsin.get(p.isin) ?? null,
+				});
+			} else {
+				candidates.set(key, {
+					...p,
+					tob_rate_hint: tobByIsin.get(p.isin) ?? null,
 				});
 			}
 		}
+
+		if (listingId) {
+			const key = brokerId ? `${brokerId}-${listingId}` : `${listingId}`;
+			if (!candidates.has(key)) {
+				const listing = listings.find((l) => l.id === listingId);
+				if (listing) {
+					candidates.set(key, {
+						listing_id: listingId,
+						broker_id: brokerId || null,
+						isin: listing.isin,
+						ticker: listing.ticker,
+						exchange_mic: listing.exchange_mic,
+						currency_code: listing.currency_code,
+						instrument_name: listing.instrument_name,
+						instrument_type: listing.instrument_type,
+						// 0 is confirmed not held, null is unknown (while loading)
+						quantity: heldPositionsLoading ? null : "0",
+						tob_rate_hint: listing.tob_rate_hint,
+					});
+				}
+			}
+		}
+
 		return [...candidates.values()].sort((a, b) =>
 			a.ticker.localeCompare(b.ticker),
 		);
