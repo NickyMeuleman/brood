@@ -218,7 +218,6 @@ const SellPage = () => {
 				>
 					<FieldGroup>
 						<f.AppField name="listing_id">
-							{/* TODO: show all holdings before a broker is selected? empty list on load is bad UX */}
 							{(field) => (
 								<field.HoldingPicker
 									label="Holding"
