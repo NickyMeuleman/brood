@@ -60,7 +60,7 @@ const SellPage = () => {
 		data: heldPositions,
 		isLoading: heldPositionsLoading,
 		error: heldPositionsError,
-	} = useHeldPositions(executedAt, brokerId);
+	} = useHeldPositions(executedAt, brokerId || undefined);
 
 	const sellableHoldings = useMemo<SellableHolding[]>(() => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
