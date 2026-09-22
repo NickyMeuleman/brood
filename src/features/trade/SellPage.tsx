@@ -66,11 +66,18 @@ const SellPage = () => {
 		const tobByIsin = new Map(listings.map((l) => [l.isin, l.tob_rate_hint]));
 		const candidates = new Map<string, SellableHolding>();
 
+		// hasBroker: broker was picked via form and is not the default value/not in database
+		function candidateKey(
+			hasBroker: boolean,
+			listingId: number,
+			brokerId?: number,
+		) {
+			return hasBroker ? `${brokerId}-${listingId}` : `${listingId}`;
+		}
+
 		for (const p of heldPositions ?? []) {
 			// aggregate by listing only while broker isn't selected
-			const key = brokerId
-				? `${p.broker_id}-${p.listing_id}`
-				: `${p.listing_id}`;
+			const key = candidateKey(Boolean(brokerId), p.listing_id, p.broker_id);
 			const existing = candidates.get(key);
 			if (existing) {
 				candidates.set(key, {
@@ -89,7 +96,7 @@ const SellPage = () => {
 		}
 
 		if (listingId) {
-			const key = brokerId ? `${brokerId}-${listingId}` : `${listingId}`;
+			const key = candidateKey(Boolean(brokerId), listingId, brokerId);
 			if (!candidates.has(key)) {
 				const listing = listings.find((l) => l.id === listingId);
 				if (listing) {
@@ -347,13 +354,25 @@ const SellPage = () => {
 								Broker fee
 							</span>
 							<span className="font-semibold text-base text-rose-700">
-								{formatCurrency(Number(brokerFee) * -1)}
+								{formatCurrency(
+									Number(brokerFee?.amount) * -1,
+									brokerFee?.currency,
+								)}
 							</span>
 						</div>
+						{isForeignBrokerCurrency && (
+							<FxRatePreview
+								className="text-rose-700"
+								isLoading={fxLoading}
+								error={fxError}
+								rate={fxRate}
+								convertedValue={convertedBroker}
+							/>
+						)}
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">TOB</span>
 							<span className="font-semibold text-base text-rose-700">
-								{formatCurrency(Number(tobFee) * -1)}
+								{formatCurrency(Number(tobFee?.amount) * -1, tobFee?.currency)}
 							</span>
 						</div>
 					</div>
@@ -417,22 +436,28 @@ function FxRatePreview({
 	error,
 	rate,
 	convertedValue,
+	className,
 }: {
 	isLoading: boolean;
 	error: Error | null;
 	rate: string | undefined;
 	convertedValue: number | null;
+	className?: string;
 }) {
 	if (isLoading) {
 		return (
-			<p className="pl-4 text-muted-foreground text-xs">
+			<p className={cn("pl-4 text-muted-foreground text-xs", className)}>
 				Loading exchange rate…
 			</p>
 		);
 	}
 
 	if (error) {
-		return <p className="pl-4 text-destructive text-xs">{error.message}</p>;
+		return (
+			<p className={cn("pl-4 text-destructive text-xs", className)}>
+				{error.message}
+			</p>
+		);
 	}
 
 	if (!rate || convertedValue === null) {
@@ -440,7 +465,9 @@ function FxRatePreview({
 	}
 
 	return (
-		<div className="flex items-center justify-between gap-3 pl-4">
+		<div
+			className={cn("flex items-center justify-between gap-3 pl-4", className)}
+		>
 			<span className="text-muted-foreground text-sm">Converted to EUR</span>
 			<span className="font-medium text-sm">
 				{formatCurrency(convertedValue)}
