@@ -252,6 +252,7 @@ async fn buy_core(pool: &Pool<Sqlite>, fields: CreateBuyTradeInput) -> Result<()
     .await?;
 
     tx.commit().await?;
+
     Ok(())
 }
 
@@ -474,13 +475,13 @@ pub async fn sell_core(
         .last_insert_rowid();
 
         if let Some(tax) = &alloc.tax {
-            let sale_price_str = tax.sale_price_eur.to_string();
-            let buy_price_str = tax.taxable_buy_price_eur.to_string();
-            let taxable_gain_str = tax.taxable_gain_eur.to_string();
+            let sale_price_eur_str = tax.sale_price_eur.to_string();
+            let taxable_buy_price_eur_str = tax.taxable_buy_price_eur.to_string();
+            let taxable_gain_eur_str = tax.taxable_gain_eur.to_string();
             let computed_at = Utc::now().naive_utc();
             let tax_year = computation
                 .tax_year
-                .expect("tax_year is always Some when subject_to_cgt (and thus tax) is Some");
+                .expect("tax_year is always Some when subject_to_cgt (and thus tax) is true");
 
             let (fotomoment, historical, method, snapshot_id) = match &tax.pre2026_cost_basis {
                 Some(basis) => (
@@ -495,16 +496,24 @@ pub async fn sell_core(
             sqlx::query!(
                 r#"
                 INSERT INTO tax_sell_allocation (
-                    sell_allocation_id, sale_price_eur, buy_price_eur, taxable_gain_eur,
-                    tax_year, computed_at, sale_fx_rate_id, buy_fx_rate_id,
-                    fotomoment_cost_eur, historical_cost_eur,
-                    pre2026_cost_basis_method, tax_snapshot_2025_id
+                    sell_allocation_id,
+                    sale_price_eur,
+                    buy_price_eur,
+                    taxable_gain_eur,
+                    tax_year,
+                    computed_at,
+                    sale_fx_rate_id,
+                    buy_fx_rate_id,
+                    fotomoment_cost_eur,
+                    historical_cost_eur,
+                    pre2026_cost_basis_method,
+                    tax_snapshot_2025_id
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                 "#,
                 sell_allocation_id,
-                sale_price_str,
-                buy_price_str,
-                taxable_gain_str,
+                sale_price_eur_str,
+                taxable_buy_price_eur_str,
+                taxable_gain_eur_str,
                 tax_year,
                 computed_at,
                 tax.sale_fx_rate_id,
@@ -525,6 +534,7 @@ pub async fn sell_core(
     );
 
     tx.commit().await?;
+
     Ok(computation)
 }
 
@@ -546,10 +556,12 @@ pub async fn sell(
 ) -> Result<SellComputation, AppError> {
     let listing_id = fields.listing_id;
     let computation = sell_core(&db.pool, fields).await?;
+
     // non-fatal backfill-on-success
     if let Err(e) = backfill(&db.pool, &http.client, listing_id).await {
         eprintln!("Post-sell sync for listing {listing_id} failed (non-fatal): {e}");
     }
+
     Ok(computation)
 }
 
