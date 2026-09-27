@@ -11,8 +11,8 @@ export function useSellPreview(input: CreateSellTradeInput) {
 			input.quantity,
 			input.unit_price,
 			input.executed_at,
-			input.broker_fee ?? "",
-			input.tob_fee ?? "",
+			input.broker_fee ?? { amount: "", currency: "" },
+			input.tob_fee ?? { amount: "", currency: "" },
 		),
 		queryFn: async () => {
 			const res = await commands.previewSell(input);
@@ -24,6 +24,6 @@ export function useSellPreview(input: CreateSellTradeInput) {
 		enabled:
 			input.listing_id > 0 &&
 			Number(input.quantity) > 0 &&
-			Number(input.unit_price) > 0,
+			Number(input.unit_price.amount) > 0,
 	});
 }
