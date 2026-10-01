@@ -498,7 +498,7 @@ pub async fn sell_core(
                 INSERT INTO tax_sell_allocation (
                     sell_allocation_id,
                     sale_price_eur,
-                    buy_price_eur,
+                    taxable_buy_price_eur,
                     taxable_gain_eur,
                     tax_year,
                     computed_at,

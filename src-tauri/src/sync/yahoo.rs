@@ -1,11 +1,9 @@
+use crate::{mic_timezone, yahoo_suffix};
 use chrono::{NaiveDate, TimeZone, Utc};
 use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use thiserror::Error;
-
-use crate::{mic_timezone, yahoo_suffix};
 
 #[derive(Debug, Error)]
 pub enum Error {

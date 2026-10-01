@@ -135,6 +135,10 @@ Table price_history {
   id         integer [pk, increment]
   listing_id integer [not null, ref: > listing.id]
   date       text    [not null, note: 'ISO 8601 YYYY-MM-DD']
+  open       text
+  high       text
+  low        text
+  volume     text
   close      text    [not null, note: 'Decimal string in listing currency']
   source     text    [not null, note: 'enum: EXCHANGE, BROKER, MANUAL']
 
@@ -165,6 +169,7 @@ To look up the snapshot price for a lot:
 Table broker {
   id        integer [pk, increment]
   name      text    [not null, unique, note: 'e.g. "Re=bel", "MeDirect"']
+  broker_type text  [note: 'null for custom, else enum: REBEL, MEDIRECT, BOLERO, SAXO']
 }
 
 Table cash {
@@ -604,12 +609,16 @@ Table tax_sell_allocation {
   id                 integer [pk, increment]
   sell_allocation_id integer [not null, unique, ref: > sell_allocation.id]
   sale_price_eur     text    [not null, note: 'Decimal string; sell_allocation.quantity × sell_trade.price × fx_rate at executed_at; EUR proceeds attributable to this allocation.']
-  buy_price_eur      text    [not null, note: 'Decimal string; sell_allocation.quantity × effective_tax_cost_per_unit_eur. Applies snapshot/2031 rules from tax_snapshot_2025 for pre-2026 lots. For post-2025 lots, uses FIFO lot price × fx_rate at acquisition. EUR cost basis attributable to this allocation.']
+  taxable_buy_price_eur      text    [not null, note: 'Decimal string; sell_allocation.quantity × effective_tax_cost_per_unit_eur. Applies snapshot/2031 rules from tax_snapshot_2025 for pre-2026 lots. For post-2025 lots, uses FIFO lot price × fx_rate at acquisition. EUR cost basis attributable to this allocation.']
   taxable_gain_eur   text    [not null, note: 'Decimal string; sale_price_eur − buy_price_eur. May be negative (a loss). Broker fees and TOB are excluded per Belgian CGT rules.']
   tax_year           integer [not null, ref: > cgt_parameters.tax_year, note: 'Calendar year of sell trade executed_at in Europe/Brussels timezone.']
   computed_at        text    [not null, note: 'ISO 8601 UTC timestamp. Records when this row was last computed. Useful for debugging after rule or data corrections. Rows may be deleted and reinserted; this field reflects the most recent computation.']
   sale_fx_rate_id integer [ref: > fx_rate.id, note: 'NULL when listing currency is EUR. The official rate used to convert sale proceeds to EUR for Belgian CGT. Should always reference an ECB row.']
   buy_fx_rate_id integer [ref: > fx_rate.id, note: 'NULL when pre-2026 lot (snapshot already in EUR) OR listing currency is EUR. The broker statement already provides hist_cost_per_unit_eur and snap_price_per_unit_eur in EUR, no FX conversion row exists for a weighted average accumulated over years. When NOT NULL (post-2025 lots), references the ECB rate on the acquisition date used to convert the FIFO lot price to EUR.']
+  fotomoment_cost_eur text
+  historical_cost_eur text
+  pre2026_cost_basis_method text [note: 'enum: FOTOMOMENT, HISTORICAL_ELECTED, FLOORED_AT_ZERO']
+  tax_snapshot_2025_id integer [ref: > tax_snapshot_2025.id]
 
   note: '''
 One row per sell_allocation row.
@@ -619,6 +628,8 @@ computed_at records the moment of the most recent computation for auditability.
 Together with cgt_exemption_usage, provides all inputs to compute the final meerwaardebelasting liability for a tax year.
 
 Losses offset gains within the same tax_year. Losses do NOT carry forward to future years under current Belgian CGT rules.
+
+If the pre2026 cost basis is not the fotomoment, it can never create a minderwaarde, instead the meerwaarde is floored at zero (see circulaire).
 
 EUR values, fees are excluded per Belgian law.
 '''
@@ -803,6 +814,15 @@ purposes. see lot's FIFO ORDERING note (Circulaire 2026/C/74 rn. 144).
 
 Migration must include:
 CHECK (from_broker_id != to_broker_id)
+'''
+}
+
+Table app_settings {
+  key  text [pk, not null]
+  value text [not null]
+
+note: '''
+generic key-value store for app-level settings
 '''
 }
 

@@ -1,12 +1,10 @@
-use crate::{AppError, db::types::InstrumentType, lookup::gleif::search_gleif};
+use crate::isin;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
-
-use crate::isin;
 
 #[derive(Debug, Error)]
 pub enum Error {
