@@ -32,7 +32,10 @@ sqlx = { version = "0.8.6", features = [
   "chrono",
   "rust_decimal",
 ] }
-rust_decimal = { version = "1.42.0", features = ["serde-arbitrary-precision"] }
+rust_decimal = { version = "1.42.0", features = [
+  "serde-arbitrary-precision",
+  "macros",
+] }
 chrono = { version = "0.4.44", features = ["serde"] }
 itertools = "0.14.0"
 reqwest = { version = "0.13.3", features = ["json"] }

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, dec};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
@@ -12,6 +12,8 @@ use crate::{
     },
     parse_decimal_external, parse_decimal_internal,
 };
+
+pub const CGT_RATE: Decimal = dec!(0.10); // 0.10, 10%
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::Type, Serialize, Deserialize, specta::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -60,9 +62,13 @@ pub struct SellComputation {
     pub broker_id: i64,
     pub subject_to_cgt: bool,
     pub tax_year: Option<i64>,
+    /// Brussels-local date
+    pub sale_date: NaiveDate,
     pub allocations: Vec<AllocationComputation>,
     pub total_economic_gain_eur: Decimal,
     pub total_taxable_gain_eur: Option<Decimal>,
+    /// total taxable gain * cgt rate before annual netting and exemption. Never persisted
+    pub estimated_gross_cgt_eur: Option<Decimal>,
 }
 
 pub fn to_brussels_date_from_utc(dt: DateTime<Utc>) -> NaiveDate {
@@ -514,14 +520,19 @@ pub async fn compute_sell(
         });
     }
 
+    // cap at 0
+    let estimated_gross_cgt_eur = total_taxable_gain_eur.map(|g| g.max(Decimal::ZERO) * CGT_RATE);
+
     Ok(SellComputation {
         isin,
         broker_id: fields.broker_id,
         subject_to_cgt,
         tax_year,
+        sale_date: brussels_sale_date,
         allocations: allocation_results,
         total_economic_gain_eur,
         total_taxable_gain_eur,
+        estimated_gross_cgt_eur,
     })
 }
 
@@ -760,7 +771,7 @@ mod sell_integration_tests {
     #[tokio::test]
     async fn mixed_era_sell_computes_both_branches_independently() {
         let pool = test_pool().await;
-        let broker_id = 1;
+        let broker_id = 10;
         let instrument_id = 1;
         let listing_id = 1;
         base_fixture(&pool, broker_id, instrument_id, 2026).await;
@@ -840,6 +851,11 @@ mod sell_integration_tests {
         assert_eq!(computation.total_economic_gain_eur, d("270"));
         assert_eq!(computation.total_taxable_gain_eur, Some(d("240")));
         assert_eq!(computation.tax_year, Some(2026));
+        assert_eq!(computation.estimated_gross_cgt_eur, Some(d("24")));
+        assert_eq!(
+            computation.sale_date,
+            NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
+        );
     }
 
     /// Two brokers hold the same instrument.
@@ -851,8 +867,8 @@ mod sell_integration_tests {
         let pool = test_pool().await;
         let instrument_id = 1;
         let listing_id = 1;
-        let broker_a_id = 1;
-        let broker_b_id = 2;
+        let broker_a_id = 10;
+        let broker_b_id = 20;
         base_fixture(&pool, broker_a_id, instrument_id, 2026).await;
         sqlx::query!(
             r#"

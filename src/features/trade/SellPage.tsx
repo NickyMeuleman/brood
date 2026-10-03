@@ -392,9 +392,14 @@ const SellPage = () => {
 							<Separator />
 							<div className="space-y-2">
 								<div className="flex items-center justify-between gap-3">
-									<span className="text-base text-muted-foreground">
-										Realized gain
-									</span>
+									<div className="grid">
+										<span className="text-base text-muted-foreground">
+											Realized gain
+										</span>
+										<span className="text-muted-foreground text-sm">
+											After fees (TOB + broker)
+										</span>
+									</div>
 									<span className="font-semibold text-base">
 										{formatCurrency(
 											Number(preview.data.total_economic_gain_eur),
@@ -417,6 +422,23 @@ const SellPage = () => {
 										</span>
 									)}
 								</div>
+								{preview.data.estimated_gross_cgt_eur !== null && (
+									<div className="flex items-center justify-between gap-3">
+										<div className="grid">
+											<span className="text-base text-muted-foreground">
+												Estimated CGT
+											</span>
+											<span className="text-muted-foreground text-sm">
+												Before annual exemption and loss netting
+											</span>
+										</div>
+										<span className="font-semibold text-base">
+											{formatCurrency(
+												Number(preview.data.estimated_gross_cgt_eur),
+											)}
+										</span>
+									</div>
+								)}
 								<SellTaxDetailSheet
 									computation={preview.data}
 									listings={listings}

@@ -1,5 +1,7 @@
 import { Camera, ListStart, Rewind, SkipBack } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
+	AllocationTax,
 	ListingInfo,
 	Pre2026CostBasisMethod,
 	SellComputation,
@@ -33,11 +35,24 @@ import {
 import { useDateFormatters } from "@/hooks/use-date-formatters";
 import { formatCurrency, MIC_LABEL } from "@/lib/utils";
 
-const METHOD_LABEL: Record<Pre2026CostBasisMethod, any> = {
-	FOTOMOMENT: <Camera />,
-	HISTORICAL_ELECTED: <Rewind />,
-	FLOORED_AT_ZERO: <SkipBack />,
+const METHOD_LABEL: Record<
+	Pre2026CostBasisMethod,
+	{ icon: ReactNode; label: string }
+> = {
+	FOTOMOMENT: { icon: <Camera />, label: "Fotomoment (31.12.2025)" },
+	HISTORICAL_ELECTED: { icon: <Rewind />, label: "Historical cost (elected)" },
+	FLOORED_AT_ZERO: {
+		icon: <SkipBack />,
+		label: "Historical cost, floored to zero",
+	},
 };
+
+function methodLabel(tax: AllocationTax): { icon: ReactNode; label: string } {
+	if (!tax.pre2026_cost_basis) {
+		return { icon: <ListStart />, label: "FIFO (post-2025)" };
+	}
+	return METHOD_LABEL[tax.pre2026_cost_basis.method];
+}
 
 export function SellTaxDetailSheet({
 	computation,
@@ -51,6 +66,7 @@ export function SellTaxDetailSheet({
 	const dateformatters = useDateFormatters();
 	// TODO: be specific about listing (id instead of isin)
 	const listing = listings.find((l) => l.isin === computation.isin);
+	const estimatedCGT = Number(computation.estimated_gross_cgt_eur ?? 0);
 
 	return (
 		<Sheet>
@@ -80,7 +96,10 @@ export function SellTaxDetailSheet({
 							<div className="flex items-baseline justify-between">
 								<p>Unit Price</p>
 								<p className="font-semibold text-base">
-									{formatCurrency(Number(sale.unitPrice))}
+									{formatCurrency(
+										Number(sale.unitPrice.amount),
+										sale.unitPrice.currency,
+									)}
 								</p>
 							</div>
 
@@ -89,7 +108,7 @@ export function SellTaxDetailSheet({
 							<div className="flex items-baseline justify-between">
 								<p>Total</p>
 								<p className="font-semibold text-base">
-									{formatCurrency(sale.base)}
+									{formatCurrency(sale.base, sale.unitPrice.currency)}
 								</p>
 							</div>
 						</CardContent>
@@ -97,7 +116,7 @@ export function SellTaxDetailSheet({
 
 					<div className="grid gap-2">
 						<p className="font-medium text-base">FIFO Lot Breakdown</p>
-						<div className="overflow-hidden rounded-md border border-foreground/10">
+						<div className="max-w-md overflow-hidden rounded-md border border-foreground/10">
 							<Table>
 								<TableHeader>
 									<TableRow>
@@ -133,11 +152,17 @@ export function SellTaxDetailSheet({
 											)}
 											{computation.subject_to_cgt && (
 												<TableCell>
-													{a.tax?.pre2026_cost_basis ? (
-														METHOD_LABEL[a.tax.pre2026_cost_basis.method]
-													) : (
-														<ListStart />
-													)}
+													{a.tax
+														? (() => {
+																const { icon, label } = methodLabel(a.tax);
+																return (
+																	<span className="flex items-center gap-1.5">
+																		{icon}
+																		{label}
+																	</span>
+																);
+															})()
+														: "—"}
 												</TableCell>
 											)}
 										</TableRow>
@@ -183,18 +208,20 @@ export function SellTaxDetailSheet({
 							<CardContent className="grid gap-2">
 								<div className="flex items-baseline justify-between">
 									<p>Gross</p>
+									{/* TODO: fx */}
 									<p className="font-semibold text-base text-emerald-700">
-										{formatCurrency(sale.base)}
+										{formatCurrency(sale.base, sale.unitPrice.currency)}
 									</p>
 								</div>
 								<div className="space-y-0.5">
 									<div className="flex items-baseline justify-between">
 										<p>Taxes & Fees</p>
+										{/* TODO: fx */}
 										<p className="font-semibold text-base text-rose-700">
 											{formatCurrency(
-												Number(sale.brokerFee) +
-													Number(sale.tobFee) +
-													Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
+												Number(sale.brokerFee.amount) +
+													Number(sale.tobFee.amount) +
+													estimatedCGT,
 											)}
 										</p>
 									</div>
@@ -202,24 +229,33 @@ export function SellTaxDetailSheet({
 										<span className="text-muted-foreground text-sm">
 											Broker
 										</span>
+										{/* TODO: fx */}
 										<span className="font-medium text-rose-700 text-sm">
-											{formatCurrency(Number(sale.brokerFee))}
+											{formatCurrency(
+												Number(sale.brokerFee.amount),
+												sale.brokerFee.currency,
+											)}
 										</span>
 									</div>
 
 									<div className="flex items-baseline justify-between gap-3 pl-4">
 										<span className="text-muted-foreground text-sm">TOB</span>
 										<span className="font-medium text-rose-700 text-sm">
-											{formatCurrency(Number(sale.tobFee))}
+											{formatCurrency(Number(sale.tobFee.amount))}
 										</span>
 									</div>
 
 									<div className="flex items-baseline justify-between gap-3 pl-4">
-										<span className="text-muted-foreground text-sm">CGT</span>
+										<div className="grid">
+											<span className="text-muted-foreground text-sm">
+												CGT (estimated)
+											</span>
+											<span className="text-muted-foreground text-xs">
+												Before annual exemption and loss netting.
+											</span>
+										</div>
 										<span className="font-medium text-rose-700 text-sm">
-											{formatCurrency(
-												Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
-											)}
+											{formatCurrency(estimatedCGT)}
 										</span>
 									</div>
 								</div>
@@ -228,12 +264,13 @@ export function SellTaxDetailSheet({
 
 								<div className="flex items-baseline justify-between">
 									<p>Net</p>
+									{/* TODO: fx */}
 									<p className="font-semibold text-base text-emerald-700">
 										{formatCurrency(
 											sale.base -
-												Number(sale.brokerFee) -
-												Number(sale.tobFee) -
-												Number(computation.total_taxable_gain_eur ?? 0) * 0.1,
+												Number(sale.brokerFee.amount) -
+												Number(sale.tobFee.amount) -
+												estimatedCGT,
 										)}
 									</p>
 								</div>
