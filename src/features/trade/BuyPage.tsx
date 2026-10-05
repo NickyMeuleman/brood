@@ -63,10 +63,16 @@ const BuyPage = () => {
 	const broker = brokers.find((b) => b.id === brokerId);
 
 	const {
-		data: fxRate,
-		error: fxError,
-		isLoading: fxLoading,
+		data: listingFx,
+		error: listingFxError,
+		isLoading: listingFxLoading,
 	} = useFx(executedAt, listingCurrency || "EUR");
+
+	const {
+		data: brokerFeeFx,
+		error: brokerFeeFxError,
+		isLoading: brokerFeeFxLoading,
+	} = useFx(executedAt, brokerFee?.currency || "EUR");
 
 	const { data: unitPriceHint } = usePrice(executedAt, listingId);
 	const unitPriceHintValue: MoneyInput = useMemo(() => {
@@ -82,7 +88,7 @@ const BuyPage = () => {
 		unitPrice.amount,
 		"buy",
 		listing?.tob_rate_hint,
-		fxRate,
+		listingFx,
 	);
 	const tobHintValue: MoneyInput = useMemo(() => {
 		return {
@@ -99,7 +105,7 @@ const BuyPage = () => {
 		unitPrice.amount,
 		listing?.instrument_type || "STOCK",
 		listing?.exchange_mic || "XAMS",
-		fxRate || "1",
+		brokerFeeFx || "1",
 	);
 	const brokerFeeHintValue: MoneyInput = useMemo(() => {
 		return {
@@ -114,8 +120,8 @@ const BuyPage = () => {
 	let convertedBase: number | null;
 	if (!isForeignCurrency) {
 		convertedBase = base;
-	} else if (fxRate) {
-		convertedBase = base * Number(fxRate);
+	} else if (listingFx) {
+		convertedBase = base * Number(listingFx);
 	} else {
 		convertedBase = null;
 	}
@@ -125,8 +131,8 @@ const BuyPage = () => {
 	let convertedBroker: number | null;
 	if (brokerFee?.currency && !isForeignBrokerCurrency) {
 		convertedBroker = Number(brokerFee.amount);
-	} else if (fxRate) {
-		convertedBroker = Number(brokerFee?.amount || "0") * Number(fxRate);
+	} else if (brokerFeeFx) {
+		convertedBroker = Number(brokerFee?.amount || "0") * Number(brokerFeeFx);
 	} else {
 		convertedBroker = null;
 	}
@@ -242,9 +248,9 @@ const BuyPage = () => {
 						</div>
 						{isForeignCurrency && (
 							<FxRatePreview
-								isLoading={fxLoading}
-								error={fxError}
-								rate={fxRate}
+								isLoading={listingFxLoading}
+								error={listingFxError}
+								rate={listingFx}
 								convertedValue={convertedBase}
 							/>
 						)}
@@ -261,9 +267,9 @@ const BuyPage = () => {
 						</div>
 						{isForeignBrokerCurrency && (
 							<FxRatePreview
-								isLoading={fxLoading}
-								error={fxError}
-								rate={fxRate}
+								isLoading={brokerFeeFxLoading}
+								error={brokerFeeFxError}
+								rate={brokerFeeFx}
 								convertedValue={convertedBroker}
 							/>
 						)}
