@@ -18,6 +18,7 @@ import { usePrice } from "@/hooks/use-price";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { cn, formatCurrency, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
 import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
+import { FxRatePreview } from "./FxRatePreview";
 
 const BuyPage = () => {
 	const buy = useBuy();
@@ -290,42 +291,5 @@ const BuyPage = () => {
 		</div>
 	);
 };
-
-function FxRatePreview({
-	isLoading,
-	error,
-	rate,
-	convertedValue,
-}: {
-	isLoading: boolean;
-	error: Error | null;
-	rate: string | undefined;
-	convertedValue: number | null;
-}) {
-	if (isLoading) {
-		return (
-			<p className="pl-4 text-muted-foreground text-xs">
-				Loading exchange rate…
-			</p>
-		);
-	}
-
-	if (error) {
-		return <p className="pl-4 text-destructive text-xs">{error.message}</p>;
-	}
-
-	if (!rate || convertedValue === null) {
-		return null;
-	}
-
-	return (
-		<div className="flex items-center justify-between gap-3 pl-4">
-			<span className="text-muted-foreground text-sm">Converted to EUR</span>
-			<span className="font-medium text-sm">
-				{formatCurrency(convertedValue, "EUR")}
-			</span>
-		</div>
-	);
-}
 
 export default BuyPage;

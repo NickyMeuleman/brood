@@ -23,6 +23,7 @@ import { useSellPreview } from "@/hooks/use-sell-preview";
 import { useTobHint } from "@/hooks/use-tob-hint";
 import { cn, formatCurrency, getCurrencySymbol, MIC_LABEL } from "@/lib/utils";
 import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
+import { FxRatePreview } from "./FxRatePreview";
 import { SellTaxDetailSheet } from "./SellDetails";
 import type { SellableHolding } from "./types";
 
@@ -452,50 +453,5 @@ const SellPage = () => {
 		</div>
 	);
 };
-
-function FxRatePreview({
-	isLoading,
-	error,
-	rate,
-	convertedValue,
-	className,
-}: {
-	isLoading: boolean;
-	error: Error | null;
-	rate: string | undefined;
-	convertedValue: number | null;
-	className?: string;
-}) {
-	if (isLoading) {
-		return (
-			<p className={cn("pl-4 text-muted-foreground text-xs", className)}>
-				Loading exchange rate…
-			</p>
-		);
-	}
-
-	if (error) {
-		return (
-			<p className={cn("pl-4 text-destructive text-xs", className)}>
-				{error.message}
-			</p>
-		);
-	}
-
-	if (!rate || convertedValue === null) {
-		return null;
-	}
-
-	return (
-		<div
-			className={cn("flex items-center justify-between gap-3 pl-4", className)}
-		>
-			<span className="text-muted-foreground text-sm">Converted to EUR</span>
-			<span className="font-medium text-sm">
-				{formatCurrency(convertedValue)}
-			</span>
-		</div>
-	);
-}
 
 export default SellPage;
