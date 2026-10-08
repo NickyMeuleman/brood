@@ -106,14 +106,18 @@ const BuyPage = () => {
 		unitPrice.amount,
 		listing?.instrument_type || "STOCK",
 		listing?.exchange_mic || "XAMS",
-		brokerFeeFx || "1",
+		// this is listingfx! not brokerfeefx
+		listingFx || "1",
 	);
+
 	const brokerFeeHintValue: MoneyInput = useMemo(() => {
 		return {
-			currency: brokerFeeHint?.currency || "EUR",
 			amount: Number(brokerFeeHint?.amount || "0").toFixed(2),
+			currency: brokerFeeHint?.currency || "EUR",
 		};
-	}, [brokerFeeHint]);
+	}, [brokerFeeHint?.amount, brokerFeeHint?.currency]);
+	console.log({ brokerFeeHint, brokerFeeHintValue });
+
 	useFieldHint(f, "broker_fee", brokerFeeHintValue);
 
 	const summary = computeTradeSummary({

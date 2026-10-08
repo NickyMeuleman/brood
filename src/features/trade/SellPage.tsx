@@ -181,14 +181,14 @@ const SellPage = () => {
 		unitPrice.amount,
 		holding?.instrument_type || "STOCK",
 		holding?.exchange_mic || "XAMS",
-		brokerFeeFx || "1",
+		listingFx || "1",
 	);
 	const brokerFeeHintValue: MoneyInput = useMemo(() => {
 		return {
 			currency: brokerFeeHint?.currency || "EUR",
 			amount: Number(brokerFeeHint?.amount || "0").toFixed(2),
 		};
-	}, [brokerFeeHint]);
+	}, [brokerFeeHint?.amount, brokerFeeHint?.currency]);
 	useFieldHint(f, "broker_fee", brokerFeeHintValue);
 
 	const summary = computeTradeSummary({
@@ -439,6 +439,9 @@ const SellPage = () => {
 									computation={preview.data}
 									listings={listings}
 									summary={summary}
+									quantity={quantity}
+									unitPrice={unitPrice}
+									fxRate={listingFx}
 								/>
 							</div>
 						</>
