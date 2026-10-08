@@ -26,6 +26,7 @@ import { TruncatedTooltip } from "../holdings/TruncatedTooltip";
 import { FxRatePreview } from "./FxRatePreview";
 import { SellTaxDetailSheet } from "./SellDetails";
 import type { SellableHolding } from "./types";
+import { computeTradeSummary } from "./lib";
 
 const SellPage = () => {
 	const sell = useSell();
@@ -138,10 +139,16 @@ const SellPage = () => {
 	);
 
 	const {
-		data: fxRate,
-		error: fxError,
-		isLoading: fxLoading,
+		data: listingFx,
+		error: listingFxError,
+		isLoading: listingFxLoading,
 	} = useFx(executedAt, listingCurrency || "EUR");
+
+	const {
+		data: brokerFeeFx,
+		error: brokerFeeFxError,
+		isLoading: brokerFeeFxLoading,
+	} = useFx(executedAt, brokerFee?.currency || "EUR");
 
 	const { data: unitPriceHint } = usePrice(executedAt, listingId);
 	const unitPriceHintValue: MoneyInput = useMemo(() => {
@@ -157,7 +164,7 @@ const SellPage = () => {
 		unitPrice.amount,
 		"sell",
 		holding?.tob_rate_hint,
-		fxRate,
+		listingFx,
 	);
 	const tobHintValue: MoneyInput = useMemo(() => {
 		return {
@@ -174,7 +181,7 @@ const SellPage = () => {
 		unitPrice.amount,
 		holding?.instrument_type || "STOCK",
 		holding?.exchange_mic || "XAMS",
-		fxRate || "1",
+		brokerFeeFx || "1",
 	);
 	const brokerFeeHintValue: MoneyInput = useMemo(() => {
 		return {
@@ -184,32 +191,20 @@ const SellPage = () => {
 	}, [brokerFeeHint]);
 	useFieldHint(f, "broker_fee", brokerFeeHintValue);
 
-	const base = Number(quantity) * Number(unitPrice.amount);
+	const summary = computeTradeSummary({
+		quantity,
+		unitPrice,
+		listingCurrency: listingCurrency ?? "EUR",
+		brokerFee,
+		tobFee,
+		listingFx,
+		brokerFeeFx,
+	});
 
-	let convertedBase: number | null;
-	if (!isForeignCurrency) {
-		convertedBase = base;
-	} else if (fxRate) {
-		convertedBase = base * Number(fxRate);
-	} else {
-		convertedBase = null;
-	}
-
-	const isForeignBrokerCurrency =
-		brokerFee?.currency && brokerFee?.currency !== "EUR";
-	let convertedBroker: number | null;
-	if (brokerFee?.currency && !isForeignBrokerCurrency) {
-		convertedBroker = Number(brokerFee.amount);
-	} else if (fxRate) {
-		convertedBroker = Number(brokerFee?.amount || "0") * Number(fxRate);
-	} else {
-		convertedBroker = null;
-	}
-
-	const total =
-		(convertedBase ?? 0) -
-		(convertedBroker ?? 0) -
-		Number(tobFee?.amount || "0");
+	const totalEur =
+		summary.baseEur === null || summary.brokerFeeEur === null
+			? null
+			: summary.baseEur - summary.brokerFeeEur - summary.tobFee.amount;
 
 	const preview = useSellPreview({
 		listing_id: listingId,
@@ -339,15 +334,15 @@ const SellPage = () => {
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">Base</span>
 							<span className="font-semibold text-base">
-								{formatCurrency(base, listingCurrency)}
+								{formatCurrency(summary.base.amount, summary.base.currency)}
 							</span>
 						</div>
-						{isForeignCurrency && (
+						{summary.base.currency !== "EUR" && (
 							<FxRatePreview
-								isLoading={fxLoading}
-								error={fxError}
-								rate={fxRate}
-								convertedValue={convertedBase}
+								isLoading={listingFxLoading}
+								error={listingFxError}
+								rate={listingFx}
+								convertedValue={summary.baseEur}
 							/>
 						)}
 						<div className="flex items-center justify-between gap-3">
@@ -356,24 +351,24 @@ const SellPage = () => {
 							</span>
 							<span className="font-semibold text-base text-rose-700">
 								{formatCurrency(
-									Number(brokerFee?.amount) * -1,
-									brokerFee?.currency,
+									summary.brokerFee.amount,
+									summary.brokerFee.currency,
 								)}
 							</span>
 						</div>
-						{isForeignBrokerCurrency && (
+						{summary.brokerFee.currency !== "EUR" && (
 							<FxRatePreview
 								className="text-rose-700"
-								isLoading={fxLoading}
-								error={fxError}
-								rate={fxRate}
-								convertedValue={convertedBroker}
+								isLoading={brokerFeeFxLoading}
+								error={brokerFeeFxError}
+								rate={brokerFeeFx}
+								convertedValue={summary.brokerFeeEur}
 							/>
 						)}
 						<div className="flex items-center justify-between gap-3">
 							<span className="text-base text-muted-foreground">TOB</span>
 							<span className="font-semibold text-base text-rose-700">
-								{formatCurrency(Number(tobFee?.amount) * -1, tobFee?.currency)}
+								{formatCurrency(summary.tobFee.amount, summary.tobFee.currency)}
 							</span>
 						</div>
 					</div>
@@ -383,7 +378,7 @@ const SellPage = () => {
 					<div className="flex items-center justify-between gap-3">
 						<span className="font-semibold text-xl">Total</span>
 						<span className="font-semibold text-xl">
-							{total === null ? "-" : formatCurrency(total)}
+							{totalEur === null ? "-" : formatCurrency(totalEur, "EUR")}
 						</span>
 					</div>
 
@@ -443,7 +438,7 @@ const SellPage = () => {
 								<SellTaxDetailSheet
 									computation={preview.data}
 									listings={listings}
-									sale={{ brokerFee, tobFee, quantity, unitPrice, base }}
+									summary={summary}
 								/>
 							</div>
 						</>
